@@ -7,7 +7,7 @@ This document outlines the frontend requirements, user stories, and implementati
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS + Radix UI / Shadcn UI
 - **State Management**: React Context / Zustand (for live bidding state)
-- **Identity**: @worldcoin/idkit (World ID 4.0)
+- **Identity**: World ID 4.0
 - **Payments/Chain**: Arc (EVM-compatible) & Hedera Hashgraph SDK
 - **Real-time**: WebSockets or Vercel AI SDK for streaming updates
 
