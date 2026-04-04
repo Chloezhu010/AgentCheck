@@ -4,11 +4,11 @@ import { getStoredSamples } from "@/server/tools/business";
 import { buildDeliveryReport } from "@/lib/audit-demo-data";
 import type { Content, FunctionCall } from "@google/genai";
 import type {
+  AgentBid,
   AuditSession,
   AuditEvent,
   IntentInput,
   OrchestratorMessage,
-  SampleEvaluation,
 } from "@/types/audit";
 
 const MAX_AGENT_STEPS = 25;
@@ -50,6 +50,12 @@ type SessionEntry = {
   session: AuditSession;
   agentHistory: Content[];
   loopRunning: boolean;
+  currentBids: AgentBid[];
+  selectedAgent?: {
+    agentId: string;
+    agentName: string;
+    quoteUsd: number;
+  };
   pendingAskCallId?: string;
 };
 const sessions = new Map<string, SessionEntry>();
@@ -101,6 +107,7 @@ export function createSession(input: IntentInput): AuditSession {
   const entry: SessionEntry = {
     session,
     agentHistory: [initialContent],
+    currentBids: [],
     loopRunning: false,
   };
   sessions.set(id, entry);
@@ -290,9 +297,14 @@ async function processToolCalls(
     try {
       result = await executeTool(name, args, sessionId);
 
+      if (name === "broadcast_rfq") {
+        entry.currentBids = coerceBidsFromToolResult(result);
+      }
+
       // Track audit events from HCS submissions
       if (name === "hcs_submit_message" && result && typeof result === "object") {
         const r = result as Record<string, unknown>;
+        const auditPayload = parseAuditPayload(args.message as string);
         const event: AuditEvent = {
           id: `audit-${Date.now()}`,
           label: tryParseEventLabel(args.message as string),
@@ -305,6 +317,10 @@ async function processToolCalls(
             : undefined,
         };
         entry.session.auditTrail.push(event);
+
+        if (r.status === "SUCCESS") {
+          syncSessionFromAuditEvent(entry, sessionId, auditPayload);
+        }
       }
 
       // When samples are scored, update session state for the UI
@@ -350,20 +366,11 @@ export function finalizeDelivery(
   const sample = samples.find((s) => s.agentId === agentId);
   if (!sample) return { error: "Agent not found in samples" };
 
-  const delivery = buildDeliveryReport(
-    sample.agentName,
-    entry.session.input.taskDescription,
-  );
-
-  entry.session.state = {
-    stage: "delivered",
-    approvedAgentId: agentId,
-    approvedAgentName: sample.agentName,
-    quoteUsd: 0,
-    delivery,
-    auditEvents: entry.session.auditTrail,
-  };
-  entry.session.updatedAt = Date.now();
+  setDeliveredState(entry, {
+    agentId,
+    agentName: sample.agentName,
+    quoteUsd: entry.currentBids.find((bid) => bid.id === agentId)?.quoteUsd ?? 0,
+  });
 
   return entry.session;
 }
@@ -373,10 +380,171 @@ function formatToolName(name: string): string {
 }
 
 function tryParseEventLabel(messageStr: string): string {
-  try {
-    const parsed = JSON.parse(messageStr) as { t?: string; event?: string };
-    return parsed.t ?? parsed.event ?? "Audit event";
-  } catch {
-    return "Audit event";
+  const parsed = parseAuditPayload(messageStr);
+  if (parsed?.t) {
+    return parsed.t;
   }
+
+  return "Audit event";
+}
+
+function parseAuditPayload(messageStr: string): { t?: string; agentId?: string; d?: unknown } | null {
+  try {
+    return JSON.parse(messageStr) as { t?: string; agentId?: string; d?: unknown };
+  } catch {
+    return null;
+  }
+}
+
+function syncSessionFromAuditEvent(
+  entry: SessionEntry,
+  sessionId: string,
+  payload: { t?: string; agentId?: string; d?: unknown } | null,
+): void {
+  if (!payload?.t) return;
+
+  const selection = deriveSelectedAgent(entry, sessionId, payload);
+
+  if (payload.t === "AGENT_SELECTED" && selection) {
+    entry.selectedAgent = selection;
+    return;
+  }
+
+  if (payload.t === "TASK_COMPLETED") {
+    setDeliveredState(entry, selection ?? entry.selectedAgent);
+  }
+}
+
+function deriveSelectedAgent(
+  entry: SessionEntry,
+  sessionId: string,
+  payload: { agentId?: string; d?: unknown },
+): { agentId: string; agentName: string; quoteUsd: number } | null {
+  const data = isRecord(payload.d) ? payload.d : null;
+
+  const agentId =
+    payload.agentId ??
+    readString(data, "agentId") ??
+    readString(data, "selectedAgentId");
+
+  const sample = agentId
+    ? getStoredSamples(sessionId).find((item) => item.agentId === agentId)
+    : undefined;
+  const bid = agentId
+    ? entry.currentBids.find((item) => item.id === agentId)
+    : undefined;
+
+  const agentName =
+    readString(data, "agentName") ??
+    readString(data, "selectedAgentName") ??
+    sample?.agentName ??
+    bid?.agentName ??
+    entry.selectedAgent?.agentName;
+
+  const quoteUsd =
+    readNumber(data, "quoteUsd") ??
+    readNumber(data, "finalQuoteUsd") ??
+    bid?.quoteUsd ??
+    entry.selectedAgent?.quoteUsd ??
+    0;
+
+  if (!agentId && !agentName) {
+    return deriveFallbackSelection(entry, sessionId);
+  }
+
+  return {
+    agentId: agentId ?? entry.selectedAgent?.agentId ?? "selected-agent",
+    agentName: agentName ?? "Selected agent",
+    quoteUsd,
+  };
+}
+
+function deriveFallbackSelection(
+  entry: SessionEntry,
+  sessionId: string,
+): { agentId: string; agentName: string; quoteUsd: number } | null {
+  const sample = getStoredSamples(sessionId)[0];
+  if (sample) {
+    return {
+      agentId: sample.agentId,
+      agentName: sample.agentName,
+      quoteUsd: entry.currentBids.find((bid) => bid.id === sample.agentId)?.quoteUsd ?? 0,
+    };
+  }
+
+  const bid = entry.currentBids[0];
+  if (bid) {
+    return {
+      agentId: bid.id,
+      agentName: bid.agentName,
+      quoteUsd: bid.quoteUsd,
+    };
+  }
+
+  return entry.selectedAgent ?? null;
+}
+
+function setDeliveredState(
+  entry: SessionEntry,
+  selection?: { agentId: string; agentName: string; quoteUsd: number } | null,
+): void {
+  const resolvedSelection = selection ?? deriveFallbackSelection(entry, entry.session.id);
+  const agentId = resolvedSelection?.agentId ?? "selected-agent";
+  const agentName = resolvedSelection?.agentName ?? "Selected agent";
+  const quoteUsd = resolvedSelection?.quoteUsd ?? 0;
+
+  entry.session.state = {
+    stage: "delivered",
+    approvedAgentId: agentId,
+    approvedAgentName: agentName,
+    quoteUsd,
+    delivery: buildDeliveryReport(agentName, entry.session.input.taskDescription),
+    auditEvents: entry.session.auditTrail,
+  };
+  entry.session.updatedAt = Date.now();
+}
+
+function coerceBidsFromToolResult(result: unknown): AgentBid[] {
+  if (!isRecord(result) || !Array.isArray(result.bids)) {
+    return [];
+  }
+
+  return result.bids.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+
+    const id = readString(item, "agentId");
+    const agentName = readString(item, "agentName");
+    if (!id || !agentName) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        agentName,
+        model: readString(item, "style") ?? "unknown",
+        trialQuoteUsd: readNumber(item, "trialQuoteUsd") ?? 0,
+        quoteUsd: readNumber(item, "quoteUsd") ?? 0,
+        etaMinutes: readNumber(item, "etaMinutes") ?? 0,
+        reputation: readNumber(item, "reputation") ?? 0,
+        verified: false,
+      },
+    ];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(record: Record<string, unknown> | null, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readNumber(record: Record<string, unknown> | null, key: string): number | undefined {
+  const value = record?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
