@@ -1,4 +1,4 @@
-// ── Primitives ────────────────────────────────────────────────────────────────
+// Primitives
 
 export type FlowStage = "idle" | "bidding" | "evaluating" | "delivered" | "error";
 
@@ -8,7 +8,7 @@ export type IntentWeights = {
   speed: number;
 };
 
-// ── Domain models (used by server + lib) ──────────────────────────────────────
+// Domain models (used by server + lib)
 
 export type AgentBid = {
   id: string;
@@ -45,7 +45,7 @@ export type DeliveryReport = {
   markdownPreview: string;
 };
 
-// ── Session (server-owned state machine) ──────────────────────────────────────
+// Session (server-owned state machine) 
 
 export type IntentInput = {
   taskDescription: string;
@@ -74,7 +74,7 @@ export type AuditSession = {
   updatedAt: number;
 };
 
-// ── UI layer types ─────────────────────────────────────────────────────────────
+// UI layer types
 
 export type ChatMessage = {
   id: string;
@@ -84,7 +84,7 @@ export type ChatMessage = {
   samples?: SampleEvaluation[];
 };
 
-// ── API response shapes ────────────────────────────────────────────────────────
+// API response shapes
 
 export type ApiError = { error: string };
 export type SessionResponse = { session: AuditSession };
