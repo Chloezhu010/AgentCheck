@@ -3,23 +3,29 @@
 type AuditInputProps = {
   taskDescription: string;
   onTaskChange: (value: string) => void;
+  budgetUsd: number;
+  onBudgetChange: (value: number) => void;
   disabled: boolean;
   isSubmitting: boolean;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   submitError: string | null;
   placeholder?: string;
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  showBudget?: boolean;
 };
 
 export function AuditInput({
   taskDescription,
   onTaskChange,
+  budgetUsd,
+  onBudgetChange,
   disabled,
   isSubmitting,
   onSubmit,
   submitError,
   placeholder,
   inputRef,
+  showBudget = true,
 }: AuditInputProps) {
   return (
     <div className="border-t border-zinc-100 px-6 py-4 md:px-12">
@@ -38,6 +44,22 @@ export function AuditInput({
             className="flex-1 bg-transparent font-mono text-xs text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50"
           />
         </div>
+
+        {showBudget && (
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-2.5">
+            <span className="text-xs text-zinc-400">$</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              step={1}
+              value={budgetUsd}
+              onChange={(e) => onBudgetChange(Math.max(1, Number(e.target.value)))}
+              disabled={disabled || isSubmitting}
+              className="w-12 bg-transparent text-center font-mono text-xs text-zinc-900 outline-none disabled:opacity-50"
+            />
+          </div>
+        )}
 
         <button
           type="submit"

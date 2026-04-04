@@ -8,20 +8,20 @@ const bidProfiles: Record<
   Omit<AgentBid, "id" | "agentName" | "model" | "verified">
 > = {
   "agent-alpha": {
-    trialQuoteUsd: 3.2,
-    quoteUsd: 18,
+    trialQuoteUsd: 0.6,
+    quoteUsd: 3,
     etaMinutes: 45,
     reputation: 0.85,
   },
   "agent-beta": {
-    trialQuoteUsd: 4.1,
-    quoteUsd: 22,
+    trialQuoteUsd: 0.8,
+    quoteUsd: 4,
     etaMinutes: 60,
     reputation: 0.91,
   },
   "agent-gamma": {
-    trialQuoteUsd: 2.6,
-    quoteUsd: 14,
+    trialQuoteUsd: 0.5,
+    quoteUsd: 2,
     etaMinutes: 90,
     reputation: 0.78,
   },

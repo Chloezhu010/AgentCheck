@@ -4,7 +4,7 @@ import { logAuditEvent } from "./audit";
 import type { EscrowResult } from "@/types/hedera";
 
 // Testnet safety: reject transfers above this limit to avoid draining the account
-const MAX_TRANSFER_HBAR = 1;
+const MAX_TRANSFER_HBAR = 300;
 
 export async function escrowLock(
   taskId: string,

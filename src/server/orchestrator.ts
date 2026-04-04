@@ -2,6 +2,8 @@ import { getStoredSamples } from "@/server/tools/business";
 import { runAgentLoop, parseTrialAgentSelection } from "@/server/orchestrator-loop";
 import { makeMsg, generateSessionId, sessions } from "@/server/orchestrator-session";
 import { setDeliveredState } from "@/server/orchestrator-state";
+import { escrowRelease } from "@/server/hedera/payment";
+import { usdToHbar } from "@/lib/fx";
 import type { Content } from "@google/genai";
 import type { AuditSession, IntentInput } from "@/types/audit";
 import type { SessionEntry } from "@/server/orchestrator-session";
@@ -108,10 +110,10 @@ export function respondToAgent(
   return entry.session;
 }
 
-export function finalizeDelivery(
+export async function finalizeDelivery(
   sessionId: string,
   agentId: string,
-): AuditSession | { error: string } {
+): Promise<AuditSession | { error: string }> {
   const entry = sessions.get(sessionId);
   if (!entry) return { error: "Session not found" };
 
@@ -119,10 +121,24 @@ export function finalizeDelivery(
   const sample = samples.find((s) => s.agentId === agentId);
   if (!sample) return { error: "Agent not found in samples" };
 
+  const quoteUsd = entry.currentBids.find((bid) => bid.id === agentId)?.quoteUsd ?? 0;
+
+  // Release escrow payment on Hedera (escrow → operator as demo round-trip)
+  const operatorAccountId = process.env.HEDERA_ACCOUNT_ID;
+  if (operatorAccountId && quoteUsd > 0) {
+    try {
+      const amountHbar = usdToHbar(quoteUsd);
+      await escrowRelease(sessionId, operatorAccountId, amountHbar);
+    } catch (err) {
+      console.error("Escrow release failed:", err);
+      // Continue with delivery even if release fails — don't block the UI
+    }
+  }
+
   setDeliveredState(entry, {
     agentId,
     agentName: sample.agentName,
-    quoteUsd: entry.currentBids.find((bid) => bid.id === agentId)?.quoteUsd ?? 0,
+    quoteUsd,
   });
 
   return entry.session;

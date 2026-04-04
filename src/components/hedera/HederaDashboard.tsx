@@ -218,7 +218,7 @@ export function HederaDashboard({ onTopicIdChange }: HederaDashboardProps) {
     const baselineSequence = getLatestSequence(messages);
     setTestingEscrow(true);
     setEscrowResult(null);
-    setActionStatus({ tone: "info", text: "Submitting escrow lock transaction (0.01 HBAR)..." });
+    setActionStatus({ tone: "info", text: "Submitting escrow lock transaction (~28.63 HBAR ≈ $2.50)..." });
 
     try {
       const lockRes = await fetch("/api/hedera/payment", {
@@ -227,7 +227,7 @@ export function HederaDashboard({ onTopicIdChange }: HederaDashboardProps) {
         body: JSON.stringify({
           action: "lock",
           taskId: `demo-${Date.now()}`,
-          amountHbar: 0.01,
+          amountHbar: 28.63,
         }),
       });
       const lockData = (await lockRes.json()) as {
@@ -338,7 +338,7 @@ export function HederaDashboard({ onTopicIdChange }: HederaDashboardProps) {
             disabled={isActionBusy}
             className="rounded-lg border border-emerald-500 bg-white px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {testingEscrow ? "Submitting escrow lock..." : "Test Escrow Lock (0.01 HBAR)"}
+            {testingEscrow ? "Submitting escrow lock..." : "Test Escrow Lock (~28.63 HBAR ≈ $2.50)"}
           </button>
         </div>
 

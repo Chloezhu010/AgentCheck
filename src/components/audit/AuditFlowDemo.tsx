@@ -63,12 +63,15 @@ export function AuditFlowDemo() {
           <AuditInput
             taskDescription={controller.taskDescription}
             onTaskChange={controller.setTaskDescription}
+            budgetUsd={controller.budgetUsd}
+            onBudgetChange={controller.setBudgetUsd}
             disabled={controller.isFlowRunning && !controller.hasPendingQuestion}
             isSubmitting={controller.isSubmitting}
             onSubmit={controller.handleSubmit}
             submitError={controller.submitError}
             placeholder={controller.hasPendingQuestion ? "Reply to the agent..." : undefined}
             inputRef={taskInputRef}
+            showBudget={!controller.hasSession}
           />
         </div>
 

@@ -12,7 +12,7 @@ import type {
 } from "@/types/audit";
 
 const POLL_INTERVAL_MS = 1500;
-const DEFAULT_BUDGET_USD = 50;
+const DEFAULT_BUDGET_USD = 10;
 const DEFAULT_WEIGHTS: IntentWeights = { quality: 40, price: 30, speed: 30 };
 
 type LocalMessage = {
@@ -26,6 +26,7 @@ export type DisplayMessage = LocalMessage | { source: "backend"; msg: Orchestrat
 
 export function useAuditFlowController() {
   const [taskDescription, setTaskDescription] = useState("");
+  const [budgetUsd, setBudgetUsd] = useState(DEFAULT_BUDGET_USD);
   const [lastSubmittedTask, setLastSubmittedTask] = useState("");
 
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -49,7 +50,7 @@ export function useAuditFlowController() {
   const isAgentWorking = stage === "agentic" && !hasPendingQuestion;
   const isFlowRunning = stage === "bidding" || stage === "evaluating" || isAgentWorking;
 
-  const totalBudget = DEFAULT_BUDGET_USD;
+  const totalBudget = session?.input.budgetUsd ?? budgetUsd;
   const usedBudget = session?.state.stage === "delivered" ? session.state.quoteUsd : 0;
 
   const countdownSeconds =
@@ -378,6 +379,7 @@ export function useAuditFlowController() {
     stage,
     submitError,
     taskDescription,
+    budgetUsd,
     totalBudget,
     usedBudget,
     worldId,
@@ -386,6 +388,7 @@ export function useAuditFlowController() {
     handleReset,
     handleSelectSample,
     handleSubmit,
+    setBudgetUsd,
     setDevMode,
     setIsFlowOpen,
     setTaskDescription,

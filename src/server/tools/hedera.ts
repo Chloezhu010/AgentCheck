@@ -37,7 +37,7 @@ export const hederaFunctionDeclarations: FunctionDeclaration[] = [
   {
     name: "hbar_transfer",
     description:
-      "Transfer HBAR between accounts (powered by Hedera Agent Kit). Use for escrow lock (operator → escrow) or payment release (escrow → agent). Max 1 HBAR per transfer on testnet.",
+      "Transfer HBAR between accounts (powered by Hedera Agent Kit). Use for escrow lock (operator → escrow) or payment release (escrow → agent). Max 300 HBAR per transfer on testnet.",
     parametersJsonSchema: {
       type: "object",
       properties: {
@@ -102,8 +102,8 @@ export async function executeHederaTool(
     case "hbar_transfer": {
       const toAccountId = args.toAccountId as string;
       const amount = args.amount as number;
-      if (amount > 1) {
-        return { error: "Transfer exceeds 1 HBAR testnet safety limit" };
+      if (amount > 300) {
+        return { error: "Transfer exceeds 300 HBAR testnet safety limit" };
       }
 
       const tx = new TransferTransaction()
