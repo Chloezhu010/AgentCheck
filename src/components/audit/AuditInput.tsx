@@ -22,6 +22,7 @@ type AuditInputProps = {
   onWeightChange: (key: keyof IntentWeights, value: string) => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   submitError: string | null;
+  placeholder?: string;
 };
 
 export function AuditInput({
@@ -38,6 +39,7 @@ export function AuditInput({
   onWeightChange,
   onSubmit,
   submitError,
+  placeholder,
 }: AuditInputProps) {
   return (
     <div className="border-t border-zinc-100 px-4 py-3 md:px-6">
@@ -50,7 +52,7 @@ export function AuditInput({
             type="text"
             value={taskDescription}
             onChange={(e) => onTaskChange(e.target.value)}
-            placeholder={disabled ? "Auction in progress..." : "Describe a task to audit..."}
+            placeholder={placeholder ?? (disabled ? "Agent working..." : "Describe a task to audit...")}
             disabled={disabled || isSubmitting}
             className="w-full rounded-xl border border-zinc-300 bg-zinc-50 py-2.5 pl-3 pr-20 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white disabled:opacity-50"
           />

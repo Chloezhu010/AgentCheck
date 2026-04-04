@@ -53,7 +53,10 @@ export function AuditFlowDemo() {
   const prevMsgCount = useRef(0);
 
   const stage = session?.state.stage ?? null;
-  const isFlowRunning = stage === "bidding" || stage === "evaluating";
+  const hasPendingQuestion =
+    session?.state.stage === "agentic" && !!session.state.pendingQuestion;
+  const isAgentWorking = stage === "agentic" && !hasPendingQuestion;
+  const isFlowRunning = stage === "bidding" || stage === "evaluating" || isAgentWorking;
 
   const parsedBudget = Number.parseFloat(budgetUsd);
   const totalBudget = Number.isNaN(parsedBudget) ? 0 : parsedBudget;
@@ -121,10 +124,50 @@ export function AuditFlowDemo() {
     return () => clearInterval(interval);
   }, [sessionId, stage]);
 
-  function handleStartAuction(event: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!taskDescription.trim()) return;
 
+    // If a session exists and the agent is waiting for user input, chat instead
+    if (sessionId && hasPendingQuestion) {
+      handleChat();
+      return;
+    }
+
+    handleStartAuction();
+  }
+
+  function handleChat() {
+    if (!sessionId) return;
+
+    const userText = taskDescription;
+    setTaskDescription("");
+    setSubmitError(null);
+
+    const timestamp = Date.now();
+    setLocalMessages((prev) => [
+      ...prev,
+      { source: "user", id: `user-${timestamp}`, text: userText, ts: timestamp },
+    ]);
+
+    startSubmit(async () => {
+      const res = await fetch(`/api/audit/session/${sessionId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error ?? "Failed to send message");
+        return;
+      }
+
+      setSession((data as { session: AuditSession }).session);
+    });
+  }
+
+  function handleStartAuction() {
     setSubmitError(null);
 
     const userTask = taskDescription;
@@ -318,7 +361,7 @@ export function AuditFlowDemo() {
       <AuditInput
         taskDescription={taskDescription}
         onTaskChange={setTaskDescription}
-        disabled={isFlowRunning}
+        disabled={isFlowRunning && !hasPendingQuestion}
         isSubmitting={isSubmitting}
         showSettings={showSettings}
         onToggleSettings={() => setShowSettings(!showSettings)}
@@ -327,8 +370,9 @@ export function AuditFlowDemo() {
         weights={weights}
         weightPercentages={weightPercentages}
         onWeightChange={handleWeightChange}
-        onSubmit={handleStartAuction}
+        onSubmit={handleSubmit}
         submitError={submitError}
+        placeholder={hasPendingQuestion ? "Reply to the agent..." : undefined}
       />
 
       <WorldIdModal gate={worldId} />
