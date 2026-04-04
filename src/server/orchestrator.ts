@@ -1,12 +1,9 @@
 import { normalizeWeights, buildDeliveryReport } from "@/lib/audit-demo-data";
 import { recordAuditEvent } from "@/server/audit-log";
-import { generateAllSamples, llmJudgeScore } from "@/server/judge";
-import {
-  getVisibleBids,
-  getCountdownSeconds,
-  isBiddingComplete,
-} from "@/server/mock-market";
+import { fetchAllBids, fetchAllSamples } from "@/server/agent-client";
+import { llmJudgeScore } from "@/server/judge";
 import type {
+  AgentBid,
   AuditEvent,
   AuditSession,
   IntentInput,
@@ -17,11 +14,16 @@ import type {
 // In-memory store — sufficient for the demo prototype.
 type SessionEntry = AuditSession & {
   startedAt: number;
+  fetchedBids: AgentBid[];
+  bidsReady: boolean;
   imageGenStarted?: boolean;
   judgeStarted?: boolean;
   seenBidCount: number;
 };
 const sessions = new Map<string, SessionEntry>();
+
+const BID_REVEAL_INTERVAL_MS = 1200;
+const BIDDING_WINDOW_SECONDS = 15;
 
 function generateId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -60,56 +62,68 @@ function logHcs(
   });
 }
 
+// How many fetched bids should be visible based on elapsed time.
+function revealedBidCount(session: SessionEntry): number {
+  if (!session.bidsReady) return 0;
+  const elapsed = Date.now() - session.startedAt;
+  return Math.min(
+    Math.floor(elapsed / BID_REVEAL_INTERVAL_MS),
+    session.fetchedBids.length,
+  );
+}
+
+function biddingTimeLeft(session: SessionEntry): number {
+  const elapsed = Date.now() - session.startedAt;
+  return Math.max(0, Math.ceil((BIDDING_WINDOW_SECONDS * 1000 - elapsed) / 1000));
+}
+
 // Advance the session state based on elapsed time.
 function advance(session: SessionEntry): AuditSession {
   if (session.state.stage !== "bidding") {
     return toPublic(session);
   }
 
-  if (!isBiddingComplete(session.startedAt)) {
-    // Still in bidding window — update visible bids and countdown.
-    const visibleBids = getVisibleBids(session.startedAt);
+  const revealed = revealedBidCount(session);
+  const timeLeft = biddingTimeLeft(session);
 
-    // Add messages for new bids
-    for (let i = session.seenBidCount; i < visibleBids.length; i++) {
-      const bid = visibleBids[i];
-      session.messages.push(
-        makeMsg(
-          `Bid from **${bid.agentName}** (${bid.model}) — trial ${formatUsd(bid.trialQuoteUsd)} · full ${formatUsd(bid.quoteUsd)}, ETA ${bid.etaMinutes}min, rep ${bid.reputation.toFixed(2)}`,
-        ),
-      );
-      logHcs(session.id, session.id, "BID_RECEIVED", `Bid: ${bid.agentName}`, {
-        agentName: bid.agentName,
-        quoteUsd: bid.quoteUsd,
-      }, bid.id);
-    }
-    session.seenBidCount = visibleBids.length;
+  // Add messages for newly revealed bids
+  for (let i = session.seenBidCount; i < revealed; i++) {
+    const bid = session.fetchedBids[i];
+    session.messages.push(
+      makeMsg(
+        `Bid from **${bid.agentName}** — trial ${formatUsd(bid.trialQuoteUsd)} · full ${formatUsd(bid.quoteUsd)}, ETA ${bid.etaMinutes}min, rep ${bid.reputation.toFixed(2)}`,
+      ),
+    );
+    logHcs(session.id, session.id, "BID_RECEIVED", `Bid: ${bid.agentName}`, {
+      agentName: bid.agentName,
+      quoteUsd: bid.quoteUsd,
+    }, bid.id);
+  }
+  session.seenBidCount = revealed;
 
+  if (timeLeft > 0) {
     session.state = {
       stage: "bidding",
-      visibleBids,
-      countdownSeconds: getCountdownSeconds(session.startedAt),
+      visibleBids: session.fetchedBids.slice(0, revealed),
+      countdownSeconds: timeLeft,
     };
     session.updatedAt = Date.now();
     return toPublic(session);
   }
 
-  // Bidding window closed — transition to evaluating
-  const allBids = getVisibleBids(session.startedAt);
-
-  // Add remaining bid messages
-  for (let i = session.seenBidCount; i < allBids.length; i++) {
-    const bid = allBids[i];
+  // Bidding window closed — reveal remaining bids, transition to evaluating
+  for (let i = session.seenBidCount; i < session.fetchedBids.length; i++) {
+    const bid = session.fetchedBids[i];
     session.messages.push(
       makeMsg(
-        `Bid from **${bid.agentName}** (${bid.model}) — trial ${formatUsd(bid.trialQuoteUsd)} · full ${formatUsd(bid.quoteUsd)}, ETA ${bid.etaMinutes}min, rep ${bid.reputation.toFixed(2)}`,
+        `Bid from **${bid.agentName}** — trial ${formatUsd(bid.trialQuoteUsd)} · full ${formatUsd(bid.quoteUsd)}, ETA ${bid.etaMinutes}min, rep ${bid.reputation.toFixed(2)}`,
       ),
     );
   }
-  session.seenBidCount = allBids.length;
+  session.seenBidCount = session.fetchedBids.length;
 
   session.messages.push(
-    makeMsg("Auction closed. Generating samples from all agents..."),
+    makeMsg("Auction closed. Requesting samples from agent APIs..."),
   );
 
   const scoreCanvasMsg = makeMsg("", "scoreCanvas", []);
@@ -117,29 +131,27 @@ function advance(session: SessionEntry): AuditSession {
 
   session.state = {
     stage: "evaluating",
-    bids: allBids,
+    bids: session.fetchedBids,
     samples: [],
   };
   session.updatedAt = Date.now();
 
   logHcs(session.id, session.id, "SAMPLE_REQUESTED", "Requesting samples from all agents", {
-    agentCount: allBids.length,
+    agentCount: session.fetchedBids.length,
   });
 
-  // Fire-and-forget: generate real images, then run LLM judge
+  // Fetch samples from each agent's API, then run LLM judge
   if (!session.imageGenStarted) {
     session.imageGenStarted = true;
     const weights = normalizeWeights(session.input.weights);
 
-    generateAllSamples(session.input.taskDescription)
+    fetchAllSamples(session.input.taskDescription)
       .then((samples) => {
         const current = sessions.get(session.id);
         if (!current || current.state.stage !== "evaluating") return;
 
-        // Update scoreCanvas with images (scores still 0)
         updateScoreCanvas(current, scoreCanvasMsg.id, samples);
 
-        // Now run LLM judge scoring
         if (!current.judgeStarted) {
           current.judgeStarted = true;
           current.messages.push(makeMsg("Samples received. LLM Judge is scoring..."));
@@ -171,10 +183,9 @@ function advance(session: SessionEntry): AuditSession {
         }
       })
       .catch(() => {
-        // If image gen fails entirely, add error message
         const current = sessions.get(session.id);
         if (current) {
-          current.messages.push(makeMsg("Image generation failed. You can still approve an agent based on bids."));
+          current.messages.push(makeMsg("Sample generation failed. You can still approve an agent based on bids."));
         }
       });
   }
@@ -221,9 +232,9 @@ export function createSession(input: IntentInput): AuditSession {
   const messages: OrchestratorMessage[] = [
     makeMsg(`Budget set to **${formatUsd(input.budgetUsd)}**.`),
     makeMsg(
-      `Opening RFQ for 15s — weights: quality ${wp.quality}%, price ${wp.price}%, speed ${wp.speed}%.`,
+      `Opening RFQ for ${BIDDING_WINDOW_SECONDS}s — weights: quality ${wp.quality}%, price ${wp.price}%, speed ${wp.speed}%.`,
     ),
-    makeMsg("Waiting for agent bids..."),
+    makeMsg("Broadcasting RFQ to agent APIs..."),
   ];
 
   const session: SessionEntry = {
@@ -232,13 +243,15 @@ export function createSession(input: IntentInput): AuditSession {
     state: {
       stage: "bidding",
       visibleBids: [],
-      countdownSeconds: 15,
+      countdownSeconds: BIDDING_WINDOW_SECONDS,
     },
     messages,
     auditTrail: [],
     createdAt: now,
     updatedAt: now,
     startedAt: now,
+    fetchedBids: [],
+    bidsReady: false,
     seenBidCount: 0,
   };
   sessions.set(id, session);
@@ -247,6 +260,15 @@ export function createSession(input: IntentInput): AuditSession {
     taskDescription: input.taskDescription,
     budgetUsd: input.budgetUsd,
     weights: input.weights,
+  });
+
+  // Fetch bids from each agent's API in the background
+  fetchAllBids(input.taskDescription, input.budgetUsd).then((bids) => {
+    const s = sessions.get(id);
+    if (!s) return;
+    s.fetchedBids = bids;
+    s.bidsReady = true;
+    s.updatedAt = Date.now();
   });
 
   return toPublic(session);
