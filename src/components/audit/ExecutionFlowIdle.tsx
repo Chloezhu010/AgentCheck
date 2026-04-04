@@ -20,17 +20,6 @@ export function ExecutionFlowIdle() {
           <p className="leading-relaxed text-zinc-400">
             Waiting for task prompt...
           </p>
-
-          <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-[10px] text-zinc-400">
-            <div className="flex items-center justify-between">
-              <span>TOTAL / REMAINING</span>
-              <span className="font-semibold">$50.00 / $50.00</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between">
-              <span>USED</span>
-              <span className="font-semibold">$0.00</span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -52,14 +41,14 @@ export function ExecutionFlowIdle() {
 
       <div>
         <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-          Auction_Market
+          Files
         </p>
         <div className="space-y-1.5">
           <div className="rounded border border-dashed border-zinc-200 bg-white px-2.5 py-2 text-zinc-400">
-            BIDS_PENDING
+            FILES_PENDING
           </div>
           <div className="rounded border border-dashed border-zinc-200 bg-white px-2.5 py-2 text-zinc-400">
-            SCORES_PENDING
+            PREVIEW_PENDING
           </div>
         </div>
       </div>

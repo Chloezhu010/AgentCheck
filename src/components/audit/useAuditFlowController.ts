@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useWorldIdGate } from "@/components/audit/WorldIdGate";
 import { WORLD_ACTIONS, worldScope } from "@/lib/world-id";
 import type {
+  AgentBid,
   AuditSession,
   AuditSessionState,
   IntentWeights,
@@ -37,6 +38,9 @@ export function useAuditFlowController() {
   const [devMode, setDevMode] = useState(true);
   const [isFlowOpen, setIsFlowOpen] = useState(true);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [fileSamples, setFileSamples] = useState<SampleEvaluation[]>([]);
+  const [fileBids, setFileBids] = useState<AgentBid[]>([]);
+  const [isSampleDetailsOpen, setIsSampleDetailsOpen] = useState(false);
   const [isMdUp, setIsMdUp] = useState(false);
   const [hasPromptedSampleSelection, setHasPromptedSampleSelection] = useState(false);
   const worldId = useWorldIdGate();
@@ -78,9 +82,18 @@ export function useAuditFlowController() {
   );
 
   const hasSession = !!session;
+  const biddingState = session?.state.stage === "bidding" ? session.state : null;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
   const hasSamplesReady = !!evaluatingState && evaluatingState.samples.length > 0;
-  const showMiddlePanel = hasSamplesReady && isMdUp;
+  const hasFiles = fileSamples.length > 0;
+  const middlePanelMode = !isMdUp
+    ? null
+    : biddingState
+      ? ("groupChat" as const)
+      : hasSamplesReady || (hasFiles && isSampleDetailsOpen)
+        ? ("samples" as const)
+        : null;
+  const showMiddlePanel = middlePanelMode !== null;
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -147,10 +160,17 @@ export function useAuditFlowController() {
 
   useEffect(() => {
     if (!evaluatingState || evaluatingState.samples.length === 0) return;
-    if (!selectedAgentId || !evaluatingState.samples.some((s) => s.agentId === selectedAgentId)) {
-      setSelectedAgentId(evaluatingState.samples[0].agentId);
+    setFileSamples(evaluatingState.samples);
+    setFileBids(evaluatingState.bids);
+    setIsSampleDetailsOpen(true);
+  }, [evaluatingState]);
+
+  useEffect(() => {
+    if (fileSamples.length === 0) return;
+    if (!selectedAgentId || !fileSamples.some((sample) => sample.agentId === selectedAgentId)) {
+      setSelectedAgentId(fileSamples[0].agentId);
     }
-  }, [evaluatingState, selectedAgentId]);
+  }, [fileSamples, selectedAgentId]);
 
   useEffect(() => {
     if (!hasSamplesReady || hasPromptedSampleSelection) return;
@@ -183,6 +203,36 @@ export function useAuditFlowController() {
 
     const userText = taskDescription;
     setTaskDescription("");
+    void sendChatMessage(userText);
+  }
+
+  function handleSubmitShortlist(agentIds: string[]) {
+    if (!sessionId || stage !== "bidding" || !hasPendingQuestion) return;
+
+    const normalizedIds = Array.from(new Set(agentIds));
+    const validBids = biddingState?.visibleBids ?? [];
+    const selectedBids = validBids.filter((bid) => normalizedIds.includes(bid.id));
+
+    const fallbackShortlistIds = biddingState?.shortlist?.shortlistedAgentIds ?? [];
+    const fallbackShortlistIdSet = new Set<string>(fallbackShortlistIds);
+    const fallbackSelectedBids =
+      selectedBids.length > 0
+        ? selectedBids
+        : validBids.filter((bid) => fallbackShortlistIdSet.has(bid.id));
+
+    const message =
+      fallbackSelectedBids.length > 0
+        ? `Run sample generation with ${fallbackSelectedBids
+            .map((bid) => `${bid.agentName} (${bid.id})`)
+            .join(", ")}.`
+        : "Proceed with your recommended shortlist for sample generation.";
+
+    void sendChatMessage(message);
+  }
+
+  async function sendChatMessage(userText: string): Promise<void> {
+    if (!sessionId) return;
+
     setSubmitError(null);
 
     const timestamp = Date.now();
@@ -210,6 +260,10 @@ export function useAuditFlowController() {
 
   function handleStartAuction() {
     setSubmitError(null);
+    setFileSamples([]);
+    setFileBids([]);
+    setSelectedAgentId(null);
+    setIsSampleDetailsOpen(false);
 
     const userTask = taskDescription;
     setTaskDescription("");
@@ -343,7 +397,10 @@ export function useAuditFlowController() {
     setLocalMessages([]);
     setSubmitError(null);
     prevMsgCount.current = 0;
+    setFileSamples([]);
+    setFileBids([]);
     setSelectedAgentId(null);
+    setIsSampleDetailsOpen(false);
     setHasPromptedSampleSelection(false);
   }
 
@@ -356,14 +413,18 @@ export function useAuditFlowController() {
 
   function handleSelectSample(agentId: string) {
     setSelectedAgentId(agentId);
+    setIsSampleDetailsOpen(true);
   }
 
   return {
     chatEndRef,
     countdownSeconds,
+    biddingState,
     devMode,
     displayMessages,
     evaluatingState,
+    fileBids,
+    fileSamples,
     hasPendingQuestion,
     hasSession,
     isFlowOpen,
@@ -371,6 +432,7 @@ export function useAuditFlowController() {
     isPending,
     isSubmitting,
     isTyping,
+    middlePanelMode,
     selectedAgentId,
     session,
     sessionId,
@@ -385,6 +447,7 @@ export function useAuditFlowController() {
     handleEditRequirements,
     handleReset,
     handleSelectSample,
+    handleSubmitShortlist,
     handleSubmit,
     setDevMode,
     setIsFlowOpen,
