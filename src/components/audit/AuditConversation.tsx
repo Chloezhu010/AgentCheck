@@ -5,6 +5,7 @@ import {
   TypingIndicator,
   UserMessage,
 } from "@/components/audit/ChatMessage";
+import { IdleHero } from "@/components/audit/IdleHero";
 import { AuditTrail } from "@/components/audit/AuditTrail";
 import type { RefObject, ReactNode } from "react";
 import type { AuditSession, OrchestratorMessage } from "@/types/audit";
@@ -15,8 +16,10 @@ type AuditConversationProps = {
   chatEndRef: RefObject<HTMLDivElement | null>;
   displayMessages: DisplayMessage[];
   isTyping: boolean;
+  onPickPrompt: (prompt: string) => void;
   sessionId: string | null;
   stage: AuditSession["state"]["stage"] | null;
+  taskDescription: string;
 };
 
 export function AuditConversation({
@@ -24,12 +27,18 @@ export function AuditConversation({
   chatEndRef,
   displayMessages,
   isTyping,
+  onPickPrompt,
   sessionId,
   stage,
+  taskDescription,
 }: AuditConversationProps) {
+  const showIdleHero = !sessionId && displayMessages.length === 0 && !taskDescription.trim();
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      {!sessionId && (
+      {showIdleHero && <IdleHero onPickPrompt={onPickPrompt} />}
+
+      {!sessionId && !showIdleHero && (
         <div>
           <OrchestratorLabel />
           <p className="text-xs leading-relaxed text-zinc-500">

@@ -1,10 +1,12 @@
 "use client";
 
+import { useRef } from "react";
 import { AgentConfirmPanel } from "@/components/audit/AgentConfirmPanel";
 import { AuditConversation } from "@/components/audit/AuditConversation";
 import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
+import { ExecutionFlowIdle } from "@/components/audit/ExecutionFlowIdle";
 import { WorldIdModal } from "@/components/audit/WorldIdGate";
 import { useAuditFlowController } from "@/components/audit/useAuditFlowController";
 
@@ -12,6 +14,14 @@ const FLOW_PANEL_WIDTH_CLASS = "lg:pr-60 xl:pr-72";
 
 export function AuditFlowDemo() {
   const controller = useAuditFlowController();
+  const taskInputRef = useRef<HTMLInputElement>(null);
+
+  function handlePickPrompt(prompt: string) {
+    controller.setTaskDescription(prompt);
+    window.requestAnimationFrame(() => {
+      taskInputRef.current?.focus();
+    });
+  }
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -29,7 +39,7 @@ export function AuditFlowDemo() {
         }`}
       >
         <div
-          className={`flex flex-col overflow-hidden ${
+          className={`flex flex-col overflow-hidden transition-[width,flex-basis] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             controller.showMiddlePanel
               ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0"
               : controller.hasSession
@@ -45,6 +55,8 @@ export function AuditFlowDemo() {
               auditTrail={controller.session?.auditTrail ?? []}
               isTyping={controller.isTyping}
               chatEndRef={controller.chatEndRef}
+              taskDescription={controller.taskDescription}
+              onPickPrompt={handlePickPrompt}
             />
           </div>
 
@@ -56,11 +68,12 @@ export function AuditFlowDemo() {
             onSubmit={controller.handleSubmit}
             submitError={controller.submitError}
             placeholder={controller.hasPendingQuestion ? "Reply to the agent..." : undefined}
+            inputRef={taskInputRef}
           />
         </div>
 
         {controller.showMiddlePanel && (
-          <div className="hidden min-w-0 flex-1 md:block">
+          <div className="hidden min-w-0 flex-1 md:block motion-safe:animate-sample-panel-pullout">
             <div className="h-full">
               <AgentConfirmPanel
                 samples={controller.evaluatingState?.samples ?? []}
@@ -116,9 +129,7 @@ export function AuditFlowDemo() {
                 usedBudgetUsd={controller.usedBudget}
               />
             ) : (
-              <div className="flex h-full items-center justify-center px-4 text-center font-mono text-[11px] text-zinc-400">
-                EXECUTION_FLOW_IDLE
-              </div>
+              <ExecutionFlowIdle />
             )}
           </div>
         )}
