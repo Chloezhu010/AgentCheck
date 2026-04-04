@@ -1,6 +1,6 @@
 import { generateImage } from "@/server/agents/generate";
 import type { ApiError } from "@/types/audit";
-import type { ImageAgentId, GenerateImageResult } from "@/types/agent";
+import { IMAGE_AGENT_IDS, type ImageAgentId, type GenerateImageResult } from "@/types/agent";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -10,13 +10,13 @@ const Schema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(2000),
 });
 
-const AGENT_IDS: ImageAgentId[] = ["agent-alpha", "agent-beta", "agent-gamma"];
+const AGENT_IDS: ImageAgentId[] = [...IMAGE_AGENT_IDS];
 
 type AgentResult =
   | { status: "ok"; data: GenerateImageResult }
   | { status: "error"; agentId: ImageAgentId; error: string };
 
-// POST — generate images from all 3 agents in parallel
+// POST — generate images from all configured agents in parallel
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {

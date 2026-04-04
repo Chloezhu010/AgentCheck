@@ -3,12 +3,12 @@ import { llmJudgeScore } from "@/server/judge";
 import { normalizeWeights } from "@/lib/audit-demo-data";
 import type { FunctionDeclaration } from "@google/genai";
 import type { IntentWeights, SampleEvaluation } from "@/types/audit";
-import type { ImageAgentId } from "@/types/agent";
+import { IMAGE_AGENT_IDS, type ImageAgentId } from "@/types/agent";
 
 // Session-scoped sample store so the agent loop can reference them later.
 // Key: sessionId, Value: latest scored samples
 const sampleStore = new Map<string, SampleEvaluation[]>();
-const ALL_AGENT_IDS: ImageAgentId[] = ["agent-alpha", "agent-beta", "agent-gamma"];
+const ALL_AGENT_IDS: ImageAgentId[] = [...IMAGE_AGENT_IDS];
 
 export function getStoredSamples(sessionId: string): SampleEvaluation[] {
   return sampleStore.get(sessionId) ?? [];
@@ -105,6 +105,9 @@ export async function executeBusinessTool(
           agentId: b.id,
           agentName: b.agentName,
           style: b.model,
+          avatar: b.avatar,
+          bidLine: b.bidLine,
+          verified: b.verified,
           trialQuoteUsd: b.trialQuoteUsd,
           quoteUsd: b.quoteUsd,
           etaMinutes: b.etaMinutes,
@@ -158,11 +161,12 @@ export async function executeBusinessTool(
 function normalizeAgentIds(input: unknown): ImageAgentId[] {
   if (!Array.isArray(input)) return [];
 
-  const picked = input.flatMap((item) =>
-    item === "agent-alpha" || item === "agent-beta" || item === "agent-gamma"
-      ? [item]
-      : [],
-  );
+  const picked = input.flatMap((item) => {
+    if (typeof item !== "string") {
+      return [];
+    }
+    return ALL_AGENT_IDS.includes(item as ImageAgentId) ? [item as ImageAgentId] : [];
+  });
 
   return Array.from(new Set(picked));
 }
