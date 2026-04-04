@@ -381,8 +381,6 @@ export function AuditFlowDemo() {
     <div className="flex h-screen flex-col bg-white">
       <AuditHeader
         stage={stage}
-        usedBudget={usedBudget}
-        totalBudget={totalBudget}
         countdownSeconds={countdownSeconds}
         onReset={handleReset}
         devMode={devMode}

@@ -1,26 +1,36 @@
 type AuditHeaderProps = {
   stage: string | null;
-  usedBudget: number;
-  totalBudget: number;
   countdownSeconds: number;
   onReset: () => void;
   devMode: boolean;
   onToggleDevMode: () => void;
 };
 
-function formatUsd(value: number): string {
-  return `$${value.toFixed(2)}`;
+function getStageBadge(stage: string | null, countdownSeconds: number): string | null {
+  if (stage === "bidding") {
+    return countdownSeconds > 0 ? `Bidding ${countdownSeconds}s` : null;
+  }
+
+  if (stage === "evaluating") {
+    return "Evaluating samples";
+  }
+
+  if (stage === "delivered") {
+    return "Task complete";
+  }
+
+  return null;
 }
 
 export function AuditHeader({
   stage,
-  usedBudget,
-  totalBudget,
   countdownSeconds,
   onReset,
   devMode,
   onToggleDevMode,
 }: AuditHeaderProps) {
+  const stageBadge = getStageBadge(stage, countdownSeconds);
+
   return (
     <header className="flex items-center border-b border-zinc-100 px-5 py-3">
       {/* Logo */}
@@ -37,26 +47,21 @@ export function AuditHeader({
         </span>
       </div>
 
-      {/* Center: status */}
-      <div className="flex flex-1 items-center justify-center gap-3">
-        {stage === "bidding" && (
-          <span className="text-xs text-amber-600">Bidding ends in {countdownSeconds}s</span>
-        )}
-
-        {stage === "evaluating" && (
-          <span className="text-xs text-blue-600 animate-pulse">Evaluating samples...</span>
-        )}
-
-        {stage === "delivered" && (
-          <span className="text-xs text-emerald-600">Task complete</span>
-        )}
-      </div>
+      <div className="flex-1" />
 
       {/* Right controls */}
-      <div className="flex items-center gap-2">
-        {totalBudget > 0 && (
-          <span className="font-mono text-[11px] text-zinc-400">
-            {formatUsd(usedBudget)}/{formatUsd(totalBudget)}
+      <div className="ml-auto flex items-center gap-2">
+        {stageBadge && (
+          <span
+            className={`hidden rounded-full border px-2 py-0.5 text-[10px] font-medium md:inline-flex ${
+              stage === "evaluating"
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : stage === "delivered"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-700"
+            }`}
+          >
+            {stageBadge}
           </span>
         )}
 
