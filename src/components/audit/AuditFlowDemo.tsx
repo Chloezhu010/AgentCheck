@@ -1,44 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-
-import {
-  biddingWindowSeconds,
-  buildAuditEvents,
-  buildDeliveryReport,
-  normalizeWeights,
-  sampleEvaluations,
-  seededBids,
-  validateIntentInput,
-} from "@/lib/audit-demo-data";
+import { normalizeWeights } from "@/lib/audit-demo-data";
 import type {
-  AgentBid,
-  AuditEvent,
+  AuditSession,
+  AuditSessionState,
   ChatMessage,
-  DeliveryReport,
-  FlowStage,
   IntentWeights,
   SampleEvaluation,
 } from "@/types/audit";
 
-const defaultWeights: IntentWeights = {
-  quality: 40,
-  price: 30,
-  speed: 30,
-};
+const POLL_INTERVAL_MS = 1500;
+
+const defaultWeights: IntentWeights = { quality: 40, price: 30, speed: 30 };
 
 const stepLabels = ["Intent", "Live Bids", "Quality Gate", "Delivery"];
 
-const stageToStepIndex: Record<FlowStage, number> = {
-  idle: 0,
+const stageToStepIndex: Record<AuditSessionState["stage"], number> = {
   bidding: 1,
   evaluating: 2,
   delivered: 3,
   error: 0,
 };
 
-const stageBadgeLabel: Record<FlowStage, string> = {
-  idle: "Idle",
+const stageBadgeLabel: Record<AuditSessionState["stage"], string> = {
   bidding: "Auction Running",
   evaluating: "Awaiting Approval",
   delivered: "Delivered",
@@ -60,54 +45,21 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
-function createMessage(
+function msgId() {
+  return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function msg(
   role: ChatMessage["role"],
   kind: ChatMessage["kind"],
   text: string,
   samples?: SampleEvaluation[],
 ): ChatMessage {
-  return {
-    id: `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    role,
-    kind,
-    text,
-    samples,
-  };
+  return { id: msgId(), role, kind, text, samples };
 }
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
-}
-
-/* ── streaming helper: queues messages with a delay between each ── */
-function useStreamingMessages(
-  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-) {
-  const queueRef = useRef<ChatMessage[]>([]);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function flush() {
-    if (queueRef.current.length === 0) {
-      timerRef.current = null;
-      return;
-    }
-    const next = queueRef.current.shift()!;
-    setChatMessages((prev) => [...prev, next]);
-    timerRef.current = setTimeout(flush, 600);
-  }
-
-  function enqueue(...messages: ChatMessage[]) {
-    queueRef.current.push(...messages);
-    if (!timerRef.current) {
-      flush();
-    }
-  }
-
-  function enqueueImmediate(...messages: ChatMessage[]) {
-    setChatMessages((prev) => [...prev, ...messages]);
-  }
-
-  return { enqueue, enqueueImmediate };
 }
 
 export function AuditFlowDemo() {
@@ -116,26 +68,34 @@ export function AuditFlowDemo() {
   const [weights, setWeights] = useState<IntentWeights>(defaultWeights);
   const [showSettings, setShowSettings] = useState(false);
 
-  const [stage, setStage] = useState<FlowStage>("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [countdownSeconds, setCountdownSeconds] = useState(biddingWindowSeconds);
-  const [liveBids, setLiveBids] = useState<AgentBid[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<AuditSession | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
   const [isTyping, setIsTyping] = useState(false);
-  const [approvedSample, setApprovedSample] = useState<SampleEvaluation | null>(
-    null,
-  );
-  const [deliveryReport, setDeliveryReport] = useState<DeliveryReport | null>(
-    null,
-  );
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
-  const [isPending, startTransition] = useTransition();
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, startSubmit] = useTransition();
+  const [isPending, startApprove] = useTransition();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const { enqueue, enqueueImmediate } = useStreamingMessages(setChatMessages);
+  // Track what the client has already rendered to avoid duplicate messages
+  const seenBidIds = useRef<Set<string>>(new Set());
+  const seenStage = useRef<AuditSessionState["stage"] | null>(null);
 
-  const activeStepIndex = stageToStepIndex[stage];
+  const stage = session?.state.stage ?? null;
+  const activeStepIndex = stage ? stageToStepIndex[stage] : 0;
   const isFlowRunning = stage === "bidding" || stage === "evaluating";
+
+  const parsedBudget = Number.parseFloat(budgetUsd);
+  const totalBudget = Number.isNaN(parsedBudget) ? 0 : parsedBudget;
+
+  const usedBudget =
+    session?.state.stage === "delivered" ? session.state.quoteUsd : 0;
+
+  const spendRatio = totalBudget > 0 ? Math.min((usedBudget / totalBudget) * 100, 100) : 0;
+  const countdownSeconds =
+    session?.state.stage === "bidding"
+      ? (session.state as Extract<AuditSessionState, { stage: "bidding" }>).countdownSeconds
+      : 0;
 
   const normalizedWeights = useMemo(() => normalizeWeights(weights), [weights]);
   const weightPercentages = useMemo(
@@ -147,210 +107,192 @@ export function AuditFlowDemo() {
     [normalizedWeights],
   );
 
-  const parsedBudget = Number.parseFloat(budgetUsd);
-  const totalBudget = Number.isNaN(parsedBudget) ? 0 : parsedBudget;
-  const approvedBid = approvedSample
-    ? seededBids.find((bid) => bid.id === approvedSample.agentId)
-    : null;
-  const usedBudget = approvedBid?.quoteUsd ?? 0;
-  const remainingBudget = Math.max(totalBudget - usedBudget, 0);
-  const spendRatio =
-    totalBudget > 0 ? Math.min((usedBudget / totalBudget) * 100, 100) : 0;
-
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, isTyping]);
 
-  useEffect(() => {
-    if (stage !== "bidding") {
-      return;
-    }
+  // Derive chat messages from session state changes
+  function handleSessionUpdate(next: AuditSession) {
+    setSession(next);
 
-    const bidTicker = setInterval(() => {
-      setLiveBids((currentBids) => {
-        if (currentBids.length >= seededBids.length) {
-          return currentBids;
-        }
+    const prevStage = seenStage.current;
+    const nextStage = next.state.stage;
 
-        const nextBid = seededBids[currentBids.length];
+    // Stage transitions
+    if (prevStage !== nextStage) {
+      seenStage.current = nextStage;
+
+      if (nextStage === "evaluating") {
         setIsTyping(true);
         setTimeout(() => {
           setIsTyping(false);
-          enqueueImmediate(
-            createMessage(
-              "assistant",
-              "text",
-              `Received bid from **${nextBid.agentName}** — ${formatUsd(nextBid.quoteUsd)}, ETA ${nextBid.etaMinutes}min, rep ${nextBid.reputation.toFixed(2)}`,
-            ),
-          );
-        }, 400);
+          const evaluatingState = next.state as Extract<AuditSessionState, { stage: "evaluating" }>;
+          setChatMessages((prev) => [
+            ...prev,
+            msg("assistant", "text", "Auction closed. Scoring top samples with LLM Judge..."),
+            msg("assistant", "scoreCanvas", "", evaluatingState.samples),
+          ]);
+        }, 600);
+      }
 
-        return [...currentBids, nextBid];
-      });
-    }, 1200);
+      if (nextStage === "delivered") {
+        const deliveredState = next.state as Extract<AuditSessionState, { stage: "delivered" }>;
+        setChatMessages((prev) => [
+          ...prev,
+          msg("assistant", "text", `Approved! Executing **${deliveredState.approvedAgentName}**...`),
+          msg("assistant", "text", `Task delivered. **${formatUsd(deliveredState.quoteUsd)}** released from escrow.`),
+          msg("assistant", "text", `Audit complete. Spent **${formatUsd(deliveredState.quoteUsd)}** of **${formatUsd(next.input.budgetUsd)}** budget.`),
+        ]);
+      }
+    }
 
-    const countdownTicker = setInterval(() => {
-      setCountdownSeconds((currentSeconds) =>
-        currentSeconds > 0 ? currentSeconds - 1 : 0,
-      );
-    }, 1000);
+    // New bids arriving during bidding
+    if (nextStage === "bidding") {
+      const biddingState = next.state as Extract<AuditSessionState, { stage: "bidding" }>;
+      for (const bid of biddingState.visibleBids) {
+        if (!seenBidIds.current.has(bid.id)) {
+          seenBidIds.current.add(bid.id);
+          setIsTyping(true);
+          setTimeout(() => {
+            setIsTyping(false);
+            setChatMessages((prev) => [
+              ...prev,
+              msg(
+                "assistant",
+                "text",
+                `Received bid from **${bid.agentName}** (${bid.model}) — trial ${formatUsd(bid.trialQuoteUsd)} · full job ${formatUsd(bid.quoteUsd)}, ETA ${bid.etaMinutes}min, rep ${bid.reputation.toFixed(2)}`,
+              ),
+            ]);
+          }, 400);
+        }
+      }
+    }
+  }
 
-    const nextStepTimer = setTimeout(() => {
-      setStage("evaluating");
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-        enqueue(
-          createMessage(
-            "assistant",
-            "text",
-            "Auction closed. Scoring top samples with LLM Judge...",
-          ),
-          createMessage(
-            "assistant",
-            "scoreCanvas",
-            "",
-            sampleEvaluations,
-          ),
-        );
-      }, 800);
-    }, biddingWindowSeconds * 1000);
+  // Polling — runs while a session is active and not yet delivered/errored
+  useEffect(() => {
+    if (!sessionId || stage === "delivered" || stage === "error") return;
 
-    return () => {
-      clearInterval(bidTicker);
-      clearInterval(countdownTicker);
-      clearTimeout(nextStepTimer);
-    };
-  }, [stage]);
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/audit/session/${sessionId}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { session: AuditSession };
+        handleSessionUpdate(data.session);
+      } catch {
+        // silently ignore transient fetch errors
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [sessionId, stage]);
 
   function handleStartAuction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (!taskDescription.trim()) return;
 
-    const validationError = validateIntentInput(taskDescription, budgetUsd);
-    if (validationError) {
-      setErrorMessage(validationError);
-      setStage("error");
-      enqueueImmediate(
-        createMessage("assistant", "text", validationError),
-      );
-      return;
-    }
+    setSubmitError(null);
+    seenBidIds.current = new Set();
+    seenStage.current = null;
 
-    setErrorMessage(null);
-    setStage("bidding");
-    setCountdownSeconds(biddingWindowSeconds);
-    setLiveBids([]);
-    setApprovedSample(null);
-    setDeliveryReport(null);
-    setAuditEvents([]);
-
-    // User message appears immediately
-    enqueueImmediate(
-      createMessage(
-        "user",
-        "text",
-        taskDescription,
-      ),
-    );
-
+    const userTask = taskDescription;
     setTaskDescription("");
 
-    // Agent steps stream in
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      enqueue(
-        createMessage("assistant", "text", `Got it. Budget set to **${formatUsd(totalBudget)}**.`),
-        createMessage(
+    setChatMessages((prev) => [
+      ...prev,
+      msg("user", "text", userTask),
+    ]);
+
+    startSubmit(async () => {
+      const res = await fetch("/api/audit/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskDescription: userTask,
+          budgetUsd: totalBudget,
+          weights,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setSubmitError(data.error ?? "Failed to start auction");
+        setChatMessages((prev) => [
+          ...prev,
+          msg("assistant", "text", data.error ?? "Failed to start auction"),
+        ]);
+        return;
+      }
+
+      const { sessionId: newId, session: newSession } = data as {
+        sessionId: string;
+        session: AuditSession;
+      };
+
+      setSessionId(newId);
+      setSession(newSession);
+      seenStage.current = "bidding";
+
+      setChatMessages((prev) => [
+        ...prev,
+        msg("assistant", "text", `Got it. Budget set to **${formatUsd(totalBudget)}**.`),
+        msg(
           "assistant",
           "text",
-          `Opening RFQ for ${biddingWindowSeconds}s — weights: quality ${weightPercentages.quality}%, price ${weightPercentages.price}%, speed ${weightPercentages.speed}%.`,
+          `Opening RFQ for 15s — weights: quality ${weightPercentages.quality}%, price ${weightPercentages.price}%, speed ${weightPercentages.speed}%.`,
         ),
-        createMessage(
-          "assistant",
-          "text",
-          "Waiting for agent bids...",
-        ),
-      );
-    }, 500);
+        msg("assistant", "text", "Waiting for agent bids..."),
+      ]);
+    });
   }
 
   function handleWeightChange(key: keyof IntentWeights, rawValue: string) {
-    const parsedValue = Number.parseInt(rawValue, 10);
-
-    setWeights((currentWeights) => ({
-      ...currentWeights,
-      [key]: Number.isNaN(parsedValue) ? 0 : parsedValue,
-    }));
+    const parsed = Number.parseInt(rawValue, 10);
+    setWeights((w) => ({ ...w, [key]: Number.isNaN(parsed) ? 0 : parsed }));
   }
 
   function handleApprove(sample: SampleEvaluation) {
-    if (stage !== "evaluating") {
-      return;
-    }
+    if (stage !== "evaluating" || !sessionId) return;
 
-    const selectedBid = seededBids.find((bid) => bid.id === sample.agentId);
-    const nextRemainingBudget = Math.max(totalBudget - (selectedBid?.quoteUsd ?? 0), 0);
+    setChatMessages((prev) => [
+      ...prev,
+      msg("user", "text", `Approve ${sample.agentName}`),
+    ]);
 
-    startTransition(() => {
-      setApprovedSample(sample);
-      setDeliveryReport(buildDeliveryReport(sample.agentName, taskDescription));
-      setAuditEvents(buildAuditEvents(sample.agentName));
-      setStage("delivered");
+    startApprove(async () => {
+      const res = await fetch(`/api/audit/session/${sessionId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: sample.agentId }),
+      });
 
-      enqueueImmediate(
-        createMessage("user", "text", `Approve ${sample.agentName}`),
-      );
+      const data = await res.json();
+      if (!res.ok) return;
 
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-        enqueue(
-          createMessage(
-            "assistant",
-            "text",
-            `Approved! Executing ${sample.agentName}...`,
-          ),
-          createMessage(
-            "assistant",
-            "text",
-            "Task delivered. Escrow released.",
-          ),
-          createMessage(
-            "assistant",
-            "text",
-            `Audit complete. Remaining budget: **${formatUsd(nextRemainingBudget)}**.`,
-          ),
-        );
-      }, 400);
+      handleSessionUpdate((data as { session: AuditSession }).session);
     });
   }
 
   function handleReset() {
-    setErrorMessage(null);
-    setStage("idle");
-    setCountdownSeconds(biddingWindowSeconds);
-    setLiveBids([]);
-    setApprovedSample(null);
-    setDeliveryReport(null);
-    setAuditEvents([]);
+    setSessionId(null);
+    setSession(null);
     setChatMessages(initialMessages);
     setIsTyping(false);
+    setSubmitError(null);
+    seenBidIds.current = new Set();
+    seenStage.current = null;
   }
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      {/* ── Top bar: steps + compact budget ── */}
+      {/* ── Top bar ── */}
       <header className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3 md:px-6">
-        {/* Step pills */}
         <ol className="flex gap-1.5">
           {stepLabels.map((label, index) => {
             const isActive = activeStepIndex === index;
             const isComplete = activeStepIndex > index;
-
             return (
               <li
                 key={label}
@@ -370,7 +312,6 @@ export function AuditFlowDemo() {
 
         <span className="mx-1 hidden h-4 w-px bg-zinc-200 sm:block" />
 
-        {/* Compact budget bar */}
         <div className="flex items-center gap-2 text-[11px] text-zinc-500">
           <span className="font-medium text-zinc-700">Budget</span>
           <div className="h-1.5 w-16 rounded-full bg-zinc-200">
@@ -387,16 +328,16 @@ export function AuditFlowDemo() {
         {stage === "bidding" && (
           <>
             <span className="mx-1 hidden h-4 w-px bg-zinc-200 sm:block" />
-            <span className="font-mono text-[11px] text-zinc-500">
-              {countdownSeconds}s
-            </span>
+            <span className="font-mono text-[11px] text-zinc-500">{countdownSeconds}s</span>
           </>
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
-            {stageBadgeLabel[stage]}
-          </span>
+          {stage && (
+            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+              {stageBadgeLabel[stage]}
+            </span>
+          )}
           <button
             type="button"
             onClick={handleReset}
@@ -433,10 +374,7 @@ export function AuditFlowDemo() {
                   <p
                     className="whitespace-pre-wrap [&>strong]:font-semibold"
                     dangerouslySetInnerHTML={{
-                      __html: message.text.replace(
-                        /\*\*(.*?)\*\*/g,
-                        "<strong>$1</strong>",
-                      ),
+                      __html: message.text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"),
                     }}
                   />
                 )}
@@ -445,19 +383,19 @@ export function AuditFlowDemo() {
                   <div className="mt-2 space-y-2">
                     {message.samples.map((sample) => {
                       const scorePercent = Math.round(sample.score * 100);
-
                       return (
                         <section
                           key={sample.id}
                           className="rounded-xl border border-zinc-200 bg-white p-3"
                         >
                           <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-zinc-900">
-                              {sample.agentName}
-                            </p>
-                            <p className="font-mono text-xs text-zinc-500">
-                              {scorePercent}/100
-                            </p>
+                            <div>
+                              <p className="text-sm font-semibold text-zinc-900">
+                                {sample.agentName}
+                              </p>
+                              <p className="text-[11px] text-zinc-400">{sample.model}</p>
+                            </div>
+                            <p className="font-mono text-xs text-zinc-500">{scorePercent}/100</p>
                           </div>
 
                           <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-200">
@@ -467,9 +405,7 @@ export function AuditFlowDemo() {
                             />
                           </div>
 
-                          <p className="mt-2 text-xs text-zinc-600">
-                            {sample.recommendation}
-                          </p>
+                          <p className="mt-2 text-xs text-zinc-600">{sample.recommendation}</p>
 
                           <button
                             type="button"
@@ -488,7 +424,6 @@ export function AuditFlowDemo() {
             </div>
           ))}
 
-          {/* Typing indicator */}
           {isTyping && (
             <div className="flex items-start">
               <div className="mr-2 mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-bold text-white">
@@ -508,7 +443,7 @@ export function AuditFlowDemo() {
         </div>
       </div>
 
-      {/* ── Bottom input bar ── */}
+      {/* ── Input bar ── */}
       <div className="border-t border-zinc-100 px-4 py-3 md:px-6">
         <form
           className="mx-auto flex max-w-2xl items-end gap-2"
@@ -518,9 +453,11 @@ export function AuditFlowDemo() {
             <input
               type="text"
               value={taskDescription}
-              onChange={(event) => setTaskDescription(event.target.value)}
-              placeholder={isFlowRunning ? "Auction in progress..." : "Describe a task to audit..."}
-              disabled={isFlowRunning}
+              onChange={(e) => setTaskDescription(e.target.value)}
+              placeholder={
+                isFlowRunning ? "Auction in progress..." : "Describe a task to audit..."
+              }
+              disabled={isFlowRunning || isSubmitting}
               className="w-full rounded-xl border border-zinc-300 bg-zinc-50 py-2.5 pl-3 pr-20 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white disabled:opacity-50"
             />
             <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
@@ -536,16 +473,15 @@ export function AuditFlowDemo() {
               </button>
               <button
                 type="submit"
-                disabled={isFlowRunning || !taskDescription.trim()}
+                disabled={isFlowRunning || isSubmitting || !taskDescription.trim()}
                 className="rounded-lg bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
               >
-                Send
+                {isSubmitting ? "Starting..." : "Send"}
               </button>
             </div>
           </div>
         </form>
 
-        {/* Expandable settings */}
         {showSettings && (
           <div className="mx-auto mt-2 max-w-2xl rounded-xl border border-zinc-200 bg-zinc-50 p-3">
             <div className="flex flex-wrap items-center gap-4 text-sm">
@@ -556,7 +492,7 @@ export function AuditFlowDemo() {
                   min={1}
                   step="1"
                   value={budgetUsd}
-                  onChange={(event) => setBudgetUsd(event.target.value)}
+                  onChange={(e) => setBudgetUsd(e.target.value)}
                   className="w-20 rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-900 outline-none focus:border-zinc-500"
                 />
               </label>
@@ -570,9 +506,7 @@ export function AuditFlowDemo() {
                     min={0}
                     max={100}
                     value={weights[item.key]}
-                    onChange={(event) =>
-                      handleWeightChange(item.key, event.target.value)
-                    }
+                    onChange={(e) => handleWeightChange(item.key, e.target.value)}
                     className="h-1 w-16 accent-zinc-900"
                   />
                 </label>
@@ -581,11 +515,11 @@ export function AuditFlowDemo() {
           </div>
         )}
 
-        {stage === "error" && errorMessage ? (
+        {submitError && (
           <p className="mx-auto mt-2 max-w-2xl rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            {errorMessage}
+            {submitError}
           </p>
-        ) : null}
+        )}
       </div>
     </div>
   );

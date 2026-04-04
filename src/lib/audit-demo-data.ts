@@ -10,53 +10,73 @@ export const biddingWindowSeconds = 15;
 
 export const seededBids: AgentBid[] = [
   {
-    id: "agent-a",
-    agentName: "Agent A",
-    quoteUsd: 16,
-    etaMinutes: 90,
-    reputation: 0.82,
+    id: "agent-alpha",
+    agentName: "Agent Alpha",
+    model: "GPT-5.4",
+    trialQuoteUsd: 3.20,
+    quoteUsd: 18,
+    etaMinutes: 45,
+    reputation: 0.85,
     verified: true,
   },
   {
-    id: "agent-b",
-    agentName: "Agent B",
+    id: "agent-beta",
+    agentName: "Agent Beta",
+    model: "Claude 4.6 Sonnet",
+    trialQuoteUsd: 4.10,
     quoteUsd: 22,
-    etaMinutes: 120,
+    etaMinutes: 60,
     reputation: 0.91,
     verified: true,
   },
   {
-    id: "agent-c",
-    agentName: "Agent C",
-    quoteUsd: 13,
-    etaMinutes: 150,
-    reputation: 0.74,
-    verified: false,
+    id: "agent-gamma",
+    agentName: "Agent Gamma",
+    model: "Gemini 2.5 Pro",
+    trialQuoteUsd: 2.60,
+    quoteUsd: 14,
+    etaMinutes: 90,
+    reputation: 0.78,
+    verified: true,
   },
 ];
 
 export const sampleEvaluations: SampleEvaluation[] = [
   {
-    id: "sample-agent-b",
-    agentId: "agent-b",
-    agentName: "Agent B",
-    score: 0.89,
+    id: "sample-agent-beta",
+    agentId: "agent-beta",
+    agentName: "Agent Beta",
+    model: "Claude 4.6 Sonnet",
+    score: 0.92,
     recommendation:
-      "Best structure and strongest evidence trail. Slightly higher cost.",
-    sampleTitle: "Competitor Positioning Snapshot",
+      "Best neon styling and cleanest connect/disconnect state. Slightly higher cost but strongest visual fidelity.",
+    sampleTitle: "Cyberpunk Wallet Connect — Trial",
     summary:
-      "Summarizes three competitors, tags pricing angles, and highlights UX conversion risks with citations.",
+      "Neon cyan/magenta border glow, monospace font, animated pulse on hover. MetaMask + WalletConnect buttons with correct connected/disconnected states.",
   },
   {
-    id: "sample-agent-a",
-    agentId: "agent-a",
-    agentName: "Agent A",
-    score: 0.84,
+    id: "sample-agent-alpha",
+    agentId: "agent-alpha",
+    agentName: "Agent Alpha",
+    model: "GPT-5.4",
+    score: 0.85,
     recommendation:
-      "Good speed/cost tradeoff. Needs tighter source confidence labels.",
-    sampleTitle: "Rapid Market Brief",
+      "Good cyberpunk aesthetic, solid state handling. Neon effects slightly muted vs Beta.",
+    sampleTitle: "Cyberpunk Wallet Connect — Trial",
     summary:
-      "Fast outline with actionable bullets; fewer references and less ranking rationale.",
+      "Dark background with green neon accents, connect/disconnect toggle works. Missing WalletConnect icon treatment.",
+  },
+  {
+    id: "sample-agent-gamma",
+    agentId: "agent-gamma",
+    agentName: "Agent Gamma",
+    model: "Gemini 2.5 Pro",
+    score: 0.71,
+    recommendation:
+      "Functional but minimal styling. Doesn't capture the cyberpunk aesthetic well enough.",
+    sampleTitle: "Cyberpunk Wallet Connect — Trial",
+    summary:
+      "Basic button with purple border. Connect state works but no animations, no wallet icons, generic look.",
   },
 ];
 
@@ -100,7 +120,7 @@ export function buildAuditEvents(selectedAgent: string): AuditEvent[] {
     },
     {
       id: "sample-log",
-      label: `Sample scores logged and ${selectedAgent} selected`,
+      label: `Trial scores logged — ${selectedAgent} selected`,
       status: "logged",
       txUrl: "https://hashscan.io/testnet/transaction/0.0.1001-1710000001",
     },
@@ -118,12 +138,12 @@ export function buildDeliveryReport(
   taskDescription: string,
 ): DeliveryReport {
   return {
-    title: `${selectedAgent} Final Delivery`,
+    title: `${selectedAgent} — Full Delivery`,
     highlights: [
-      "Top 3 competitors mapped by pricing and UX conversion risk.",
-      "Recommendation includes first two experiments for quick validation.",
-      "All bid, scoring, and payment checkpoints include audit references.",
+      "Production-ready React component with MetaMask + WalletConnect support.",
+      "Animated neon glow transitions, error and loading states, mobile-responsive layout.",
+      "All bid, trial scoring, and payment checkpoints include Hedera audit references.",
     ],
-    markdownPreview: `# Audit Summary\n\nTask: ${taskDescription}\n\n- Selected agent: ${selectedAgent}\n- Outcome: Delivered\n- Next step: Review report and trigger the next subtask auction`,
+    markdownPreview: `# Delivery Summary\n\nTask: ${taskDescription}\n\n- Selected agent: ${selectedAgent}\n- Outcome: Delivered\n- Next step: Export component or trigger next subtask auction`,
   };
 }
