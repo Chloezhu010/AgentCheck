@@ -16,14 +16,13 @@ import {
 import type {
   AuditSession,
   AuditSessionState,
+  IntakeSpec,
   IntentWeights,
   OrchestratorMessage,
   SampleEvaluation,
 } from "@/types/audit";
 
 const POLL_INTERVAL_MS = 1500;
-
-const defaultWeights: IntentWeights = { quality: 40, price: 30, speed: 30 };
 
 type LocalMessage = {
   source: "assistant" | "user";
@@ -35,10 +34,7 @@ type LocalMessage = {
 type DisplayMessage = LocalMessage | { source: "backend"; msg: OrchestratorMessage };
 
 export function AuditFlowDemo() {
-  const [taskDescription, setTaskDescription] = useState("");
-  const [budgetUsd, setBudgetUsd] = useState("50");
-  const [weights, setWeights] = useState<IntentWeights>(defaultWeights);
-  const [showSettings, setShowSettings] = useState(false);
+  const [inputText, setInputText] = useState("");
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<AuditSession | null>(null);
@@ -55,8 +51,10 @@ export function AuditFlowDemo() {
   const stage = session?.state.stage ?? null;
   const isFlowRunning = stage === "bidding" || stage === "evaluating";
 
-  const parsedBudget = Number.parseFloat(budgetUsd);
-  const totalBudget = Number.isNaN(parsedBudget) ? 0 : parsedBudget;
+  const extractedSpec: IntakeSpec | null =
+    session?.state.stage === "intake" ? session.state.extractedSpec : null;
+
+  const totalBudget = extractedSpec?.budgetUsd ?? session?.input.budgetUsd ?? 0;
 
   const usedBudget =
     session?.state.stage === "delivered" ? session.state.quoteUsd : 0;
@@ -65,16 +63,6 @@ export function AuditFlowDemo() {
     session?.state.stage === "bidding"
       ? (session.state as Extract<AuditSessionState, { stage: "bidding" }>).countdownSeconds
       : 0;
-
-  const normalizedWeights = useMemo(() => normalizeWeights(weights), [weights]);
-  const weightPercentages = useMemo(
-    () => ({
-      quality: Math.round(normalizedWeights.quality * 100),
-      price: Math.round(normalizedWeights.price * 100),
-      speed: Math.round(normalizedWeights.speed * 100),
-    }),
-    [normalizedWeights],
-  );
 
   const displayMessages: DisplayMessage[] = useMemo(() => {
     const backendMsgs: DisplayMessage[] = (session?.messages ?? []).map((msg) => ({
@@ -103,9 +91,9 @@ export function AuditFlowDemo() {
     prevMsgCount.current = session?.messages?.length ?? 0;
   }, [session?.messages?.length]);
 
-  // Polling
+  // Polling — only during bidding/evaluating (intake uses request/response, not polling)
   useEffect(() => {
-    if (!sessionId || stage === "delivered" || stage === "error") return;
+    if (!sessionId || stage === "delivered" || stage === "error" || stage === "intake" || !stage) return;
 
     const interval = setInterval(async () => {
       try {
@@ -121,37 +109,104 @@ export function AuditFlowDemo() {
     return () => clearInterval(interval);
   }, [sessionId, stage]);
 
-  function handleStartAuction(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!taskDescription.trim()) return;
+  // Input disabled when: flow is running (bidding/evaluating), or spec is extracted (waiting for confirm)
+  const inputDisabled = isFlowRunning || stage === "delivered" || !!extractedSpec;
 
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Get suggestion options from the last backend message (only during intake, before spec)
+  const suggestionOptions = useMemo(() => {
+    if (stage !== "intake" || extractedSpec) return null;
+    const backendMsgs = session?.messages ?? [];
+    const lastMsg = backendMsgs[backendMsgs.length - 1];
+    return lastMsg?.options ?? null;
+  }, [session?.messages, stage, extractedSpec]);
+
+  function sendMessage(text: string) {
     setSubmitError(null);
 
-    const userTask = taskDescription;
-    setTaskDescription("");
-
     const timestamp = Date.now();
-
     setLocalMessages((prev) => [
       ...prev,
-      { source: "user", id: `user-${timestamp}`, text: userTask, ts: timestamp },
+      { source: "user", id: `user-${timestamp}`, text, ts: timestamp },
     ]);
 
+    if (!sessionId) {
+      startSubmit(async () => {
+        const res = await fetch("/api/audit/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ initialMessage: text }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setSubmitError(data.error ?? "Failed to start session");
+          return;
+        }
+
+        const { sessionId: newId, session: newSession } = data as {
+          sessionId: string;
+          session: AuditSession;
+        };
+        setSessionId(newId);
+        setSession(newSession);
+      });
+    } else {
+      startSubmit(async () => {
+        const res = await fetch(`/api/audit/session/${sessionId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          setSubmitError(data.error ?? "Failed to send message");
+          return;
+        }
+
+        setSession((data as { session: AuditSession }).session);
+      });
+    }
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!inputText.trim()) return;
+    const text = inputText;
+    setInputText("");
+    sendMessage(text);
+  }
+
+  function handleOptionClick(option: string) {
+    if (isSubmitting) return;
+    sendMessage(option);
+  }
+
+  function handleWildcardClick() {
+    inputRef.current?.focus();
+  }
+
+  function handleConfirmSpec() {
+    if (!sessionId || !extractedSpec) return;
+
     startSubmit(async () => {
+      // World ID verification before funds are escrowed
       if (!devMode) {
         setLocalMessages((prev) => [
           ...prev,
           {
             source: "assistant",
             id: `assistant-${Date.now()}`,
-            text: "Verifying your identity with World ID before opening the auction...",
+            text: "Verifying your identity with World ID before escrowing funds...",
             ts: Date.now(),
           },
         ]);
         try {
           await worldId.trigger({
             action: WORLD_ACTIONS.CREATE_AUDIT,
-            scope: worldScope.draft(crypto.randomUUID()),
+            scope: worldScope.draft(sessionId),
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "World ID verification failed";
@@ -169,36 +224,21 @@ export function AuditFlowDemo() {
         }
       }
 
-      const res = await fetch("/api/audit/session", {
+      // Confirm spec → transition to bidding
+      const res = await fetch(`/api/audit/session/${sessionId}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskDescription: userTask,
-          budgetUsd: totalBudget,
-          weights,
-        }),
+        body: JSON.stringify({}),
       });
 
       const data = await res.json();
-
       if (!res.ok) {
-        setSubmitError(data.error ?? "Failed to start auction");
+        setSubmitError(data.error ?? "Failed to confirm spec");
         return;
       }
 
-      const { sessionId: newId, session: newSession } = data as {
-        sessionId: string;
-        session: AuditSession;
-      };
-
-      setSessionId(newId);
-      setSession(newSession);
+      setSession((data as { session: AuditSession }).session);
     });
-  }
-
-  function handleWeightChange(key: keyof IntentWeights, rawValue: string) {
-    const parsed = Number.parseInt(rawValue, 10);
-    setWeights((w) => ({ ...w, [key]: Number.isNaN(parsed) ? 0 : parsed }));
   }
 
   function handleApprove(sample: SampleEvaluation) {
@@ -284,7 +324,7 @@ export function AuditFlowDemo() {
           {!sessionId && (
             <AssistantMessage
               id="welcome"
-              text="Hi! I'm AgentCheck. Describe a task and I'll run the full auction, scoring, and audit pipeline for you."
+              text="Hi! I'm AgentCheck's orchestrator. Tell me what you need built and I'll find the best AI agents for the job."
             />
           )}
 
@@ -315,21 +355,62 @@ export function AuditFlowDemo() {
         </div>
       </div>
 
-      <AuditInput
-        taskDescription={taskDescription}
-        onTaskChange={setTaskDescription}
-        disabled={isFlowRunning}
-        isSubmitting={isSubmitting}
-        showSettings={showSettings}
-        onToggleSettings={() => setShowSettings(!showSettings)}
-        budgetUsd={budgetUsd}
-        onBudgetChange={setBudgetUsd}
-        weights={weights}
-        weightPercentages={weightPercentages}
-        onWeightChange={handleWeightChange}
-        onSubmit={handleStartAuction}
-        submitError={submitError}
-      />
+      {/* Confirm spec bar — shown when spec is extracted but not yet confirmed */}
+      {extractedSpec && (
+        <div className="border-t border-zinc-100 px-4 py-3 md:px-6">
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+            <p className="text-sm text-zinc-600">
+              Ready to open the auction — <strong>${extractedSpec.budgetUsd * (extractedSpec.trialPercent / 100)}</strong> will be escrowed for the trial.
+            </p>
+            <button
+              type="button"
+              onClick={handleConfirmSpec}
+              disabled={isSubmitting}
+              className="shrink-0 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
+            >
+              {isSubmitting ? "Verifying..." : "Start Auction"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Suggestion chips — shown during intake when orchestrator proposes options */}
+      {suggestionOptions && !isSubmitting && (
+        <div className="border-t border-zinc-50 px-4 pt-2 md:px-6">
+          <div className="mx-auto flex max-w-2xl flex-wrap gap-2">
+            {suggestionOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => handleOptionClick(option)}
+                className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:border-zinc-400 hover:bg-zinc-50"
+              >
+                {option}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={handleWildcardClick}
+              className="rounded-full border border-dashed border-zinc-300 bg-white px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-600"
+            >
+              Something else…
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Regular input — hidden when spec is extracted (confirm bar replaces it) */}
+      {!extractedSpec && (
+        <AuditInput
+          inputRef={inputRef}
+          taskDescription={inputText}
+          onTaskChange={setInputText}
+          disabled={inputDisabled}
+          isSubmitting={isSubmitting}
+          onSubmit={handleSubmit}
+          submitError={submitError}
+        />
+      )}
 
       <WorldIdModal gate={worldId} />
     </div>

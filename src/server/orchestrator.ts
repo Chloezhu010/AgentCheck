@@ -1,5 +1,6 @@
 import { normalizeWeights, buildDeliveryReport } from "@/lib/audit-demo-data";
 import { recordAuditEvent } from "@/server/audit-log";
+import { runIntakeTurn } from "@/server/intake";
 import { generateAllSamples, llmJudgeScore } from "@/server/judge";
 import {
   getVisibleBids,
@@ -9,6 +10,8 @@ import {
 import type {
   AuditEvent,
   AuditSession,
+  IntakeMessage,
+  IntakeSpec,
   IntentInput,
   OrchestratorMessage,
   SampleEvaluation,
@@ -34,9 +37,9 @@ function msgId(): string {
 function makeMsg(
   text: string,
   kind: "text" | "scoreCanvas" = "text",
-  samples?: SampleEvaluation[],
+  extras?: { samples?: SampleEvaluation[]; options?: string[] },
 ): OrchestratorMessage {
-  return { id: msgId(), ts: Date.now(), text, kind, samples };
+  return { id: msgId(), ts: Date.now(), text, kind, ...extras };
 }
 
 function formatUsd(value: number): string {
@@ -112,7 +115,7 @@ function advance(session: SessionEntry): AuditSession {
     makeMsg("Auction closed. Generating samples from all agents..."),
   );
 
-  const scoreCanvasMsg = makeMsg("", "scoreCanvas", []);
+  const scoreCanvasMsg = makeMsg("", "scoreCanvas", { samples: [] });
   session.messages.push(scoreCanvasMsg);
 
   session.state = {
@@ -208,31 +211,32 @@ function toPublic(entry: SessionEntry): AuditSession {
   };
 }
 
-export function createSession(input: IntentInput): AuditSession {
+export async function createSession(initialMessage: string): Promise<AuditSession> {
   const id = generateId();
   const now = Date.now();
-  const weights = normalizeWeights(input.weights);
-  const wp = {
-    quality: Math.round(weights.quality * 100),
-    price: Math.round(weights.price * 100),
-    speed: Math.round(weights.speed * 100),
-  };
+
+  const { reply, spec, options } = await runIntakeTurn([], initialMessage);
+
+  const conversationHistory: IntakeMessage[] = [
+    { role: "user", content: initialMessage },
+    { role: "assistant", content: reply },
+  ];
 
   const messages: OrchestratorMessage[] = [
-    makeMsg(`Budget set to **${formatUsd(input.budgetUsd)}**.`),
-    makeMsg(
-      `Opening RFQ for 15s — weights: quality ${wp.quality}%, price ${wp.price}%, speed ${wp.speed}%.`,
-    ),
-    makeMsg("Waiting for agent bids..."),
+    makeMsg(reply, "text", { options: options ?? undefined }),
   ];
 
   const session: SessionEntry = {
     id,
-    input,
+    input: {
+      taskDescription: initialMessage,
+      budgetUsd: 0,
+      weights: { quality: 40, price: 30, speed: 30 },
+    },
     state: {
-      stage: "bidding",
-      visibleBids: [],
-      countdownSeconds: 15,
+      stage: "intake",
+      conversationHistory,
+      extractedSpec: spec,
     },
     messages,
     auditTrail: [],
@@ -243,10 +247,98 @@ export function createSession(input: IntentInput): AuditSession {
   };
   sessions.set(id, session);
 
-  logHcs(id, id, "TASK_INTENT", "Task intent logged", {
-    taskDescription: input.taskDescription,
-    budgetUsd: input.budgetUsd,
-    weights: input.weights,
+  return toPublic(session);
+}
+
+export async function chatIntake(
+  sessionId: string,
+  userMessage: string,
+): Promise<AuditSession | { error: string }> {
+  const session = sessions.get(sessionId);
+  if (!session) return { error: "Session not found" };
+  if (session.state.stage !== "intake") {
+    return { error: `Cannot chat in stage: ${session.state.stage}` };
+  }
+
+  const history = session.state.conversationHistory;
+  const { reply, spec, options } = await runIntakeTurn(history, userMessage);
+
+  history.push({ role: "user", content: userMessage });
+  history.push({ role: "assistant", content: reply });
+
+  session.messages.push(makeMsg(reply, "text", { options: options ?? undefined }));
+  session.state = {
+    stage: "intake",
+    conversationHistory: history,
+    extractedSpec: spec ?? session.state.extractedSpec,
+  };
+  session.updatedAt = Date.now();
+
+  return toPublic(session);
+}
+
+export function confirmSpec(
+  sessionId: string,
+): AuditSession | { error: string } {
+  const session = sessions.get(sessionId);
+  if (!session) return { error: "Session not found" };
+  if (session.state.stage !== "intake") {
+    return { error: `Cannot confirm in stage: ${session.state.stage}` };
+  }
+
+  const spec = session.state.extractedSpec;
+  if (!spec) return { error: "No task spec extracted yet" };
+
+  return transitionToBidding(session, spec);
+}
+
+function transitionToBidding(
+  session: SessionEntry,
+  spec: IntakeSpec,
+): AuditSession {
+  const trialBudget = spec.budgetUsd * (spec.trialPercent / 100);
+  const fullBudget = spec.budgetUsd - trialBudget;
+
+  session.input = {
+    taskDescription: spec.refinedTaskDescription,
+    budgetUsd: spec.budgetUsd,
+    weights: spec.weights,
+  };
+
+  const weights = normalizeWeights(spec.weights);
+  const wp = {
+    quality: Math.round(weights.quality * 100),
+    price: Math.round(weights.price * 100),
+    speed: Math.round(weights.speed * 100),
+  };
+
+  session.messages.push(
+    makeMsg(
+      `Budget locked: **${formatUsd(trialBudget)}** trial · **${formatUsd(fullBudget)}** full build (${formatUsd(spec.budgetUsd)} total).`,
+    ),
+  );
+  session.messages.push(
+    makeMsg(
+      `Opening RFQ for 15s — weights: quality ${wp.quality}%, price ${wp.price}%, speed ${wp.speed}%.`,
+    ),
+  );
+  session.messages.push(makeMsg("Waiting for agent bids..."));
+
+  session.state = {
+    stage: "bidding",
+    visibleBids: [],
+    countdownSeconds: 15,
+  };
+  session.startedAt = Date.now();
+  session.seenBidCount = 0;
+  session.updatedAt = Date.now();
+
+  logHcs(session.id, session.id, "TASK_INTENT", "Task intent logged", {
+    taskDescription: spec.refinedTaskDescription,
+    trialScope: spec.trialScope,
+    budgetUsd: spec.budgetUsd,
+    trialPercent: spec.trialPercent,
+    weights: spec.weights,
   });
 
   return toPublic(session);

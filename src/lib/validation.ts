@@ -13,6 +13,14 @@ export const CreateSessionSchema = z.object({
   weights: IntentWeightsSchema,
 });
 
+export const CreateIntakeSessionSchema = z.object({
+  initialMessage: z.string().min(1, "Message is required"),
+});
+
+export const ChatMessageSchema = z.object({
+  message: z.string().min(1, "Message is required"),
+});
+
 export const ApproveAgentSchema = z.object({
   agentId: z.string().min(1, "Agent ID is required"),
 });

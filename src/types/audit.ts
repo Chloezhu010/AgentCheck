@@ -1,11 +1,24 @@
 // Primitives
 
-export type FlowStage = "idle" | "bidding" | "evaluating" | "delivered" | "error";
+export type FlowStage = "idle" | "intake" | "bidding" | "evaluating" | "delivered" | "error";
 
 export type IntentWeights = {
   quality: number;
   price: number;
   speed: number;
+};
+
+export type IntakeSpec = {
+  refinedTaskDescription: string;
+  trialScope: string;
+  budgetUsd: number;
+  trialPercent: number;
+  weights: IntentWeights;
+};
+
+export type IntakeMessage = {
+  role: "user" | "assistant";
+  content: string;
 };
 
 // Domain models (used by server + lib)
@@ -55,6 +68,7 @@ export type OrchestratorMessage = {
   text: string;
   kind: "text" | "scoreCanvas";
   samples?: SampleEvaluation[];
+  options?: string[];
 };
 
 // Session (server-owned state machine)
@@ -66,6 +80,11 @@ export type IntentInput = {
 };
 
 export type AuditSessionState =
+  | {
+      stage: "intake";
+      conversationHistory: IntakeMessage[];
+      extractedSpec: IntakeSpec | null;
+    }
   | { stage: "bidding"; visibleBids: AgentBid[]; countdownSeconds: number }
   | { stage: "evaluating"; bids: AgentBid[]; samples: SampleEvaluation[] }
   | {

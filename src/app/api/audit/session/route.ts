@@ -1,5 +1,5 @@
 import { createSession } from "@/server/orchestrator";
-import { CreateSessionSchema } from "@/lib/validation";
+import { CreateIntakeSessionSchema } from "@/lib/validation";
 import type { ApiError, CreateSessionResponse } from "@/types/audit";
 
 export async function POST(req: Request): Promise<Response> {
@@ -10,7 +10,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid JSON" } satisfies ApiError, { status: 400 });
   }
 
-  const parsed = CreateSessionSchema.safeParse(body);
+  const parsed = CreateIntakeSessionSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0].message } satisfies ApiError,
@@ -18,7 +18,7 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const session = createSession(parsed.data);
+  const session = await createSession(parsed.data.initialMessage);
   return Response.json(
     { sessionId: session.id, session } satisfies CreateSessionResponse,
     { status: 201 },

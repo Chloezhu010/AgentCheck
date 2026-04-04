@@ -1,8 +1,9 @@
 import type { AuditSessionState } from "@/types/audit";
 
-const stepLabels = ["Intent", "Live Bids", "Quality Gate", "Delivery"];
+const stepLabels = ["Intake", "Live Bids", "Quality Gate", "Delivery"];
 
 const stageToStepIndex: Record<AuditSessionState["stage"], number> = {
+  intake: 0,
   bidding: 1,
   evaluating: 2,
   delivered: 3,
@@ -10,6 +11,7 @@ const stageToStepIndex: Record<AuditSessionState["stage"], number> = {
 };
 
 const stageBadgeLabel: Record<AuditSessionState["stage"], string> = {
+  intake: "Scoping Task",
   bidding: "Auction Running",
   evaluating: "Awaiting Approval",
   delivered: "Delivered",
