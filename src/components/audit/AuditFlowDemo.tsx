@@ -26,7 +26,7 @@ import type {
 const POLL_INTERVAL_MS = 1500;
 const DEFAULT_BUDGET_USD = 50;
 const DEFAULT_WEIGHTS: IntentWeights = { quality: 40, price: 30, speed: 30 };
-const FLOW_PANEL_WIDTH_CLASS = "md:pr-64 xl:pr-72";
+const FLOW_PANEL_WIDTH_CLASS = "lg:pr-60 xl:pr-72";
 
 type LocalMessage = {
   source: "assistant" | "user";
@@ -39,6 +39,7 @@ type DisplayMessage = LocalMessage | { source: "backend"; msg: OrchestratorMessa
 
 export function AuditFlowDemo() {
   const [taskDescription, setTaskDescription] = useState("");
+  const [lastSubmittedTask, setLastSubmittedTask] = useState("");
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<AuditSession | null>(null);
@@ -48,13 +49,14 @@ export function AuditFlowDemo() {
   const [isPending, startApprove] = useTransition();
   const [devMode, setDevMode] = useState(false);
   const [isFlowOpen, setIsFlowOpen] = useState(true);
-  const [highlightedAgentId, setHighlightedAgentId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [isMdUp, setIsMdUp] = useState(false);
+  const [hasPromptedSampleSelection, setHasPromptedSampleSelection] = useState(false);
   const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const samplePanelRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stage = session?.state.stage ?? null;
   const hasPendingQuestion =
@@ -100,11 +102,11 @@ export function AuditFlowDemo() {
   }, [session?.messages?.length]);
 
   useEffect(() => {
-    return () => {
-      if (highlightTimerRef.current) {
-        clearTimeout(highlightTimerRef.current);
-      }
-    };
+    const media = window.matchMedia("(min-width: 768px)");
+    const onChange = (event: MediaQueryListEvent) => setIsMdUp(event.matches);
+    setIsMdUp(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
   }, []);
 
   useEffect(() => {
@@ -203,6 +205,8 @@ export function AuditFlowDemo() {
 
     const userTask = taskDescription;
     setTaskDescription("");
+    setLastSubmittedTask(userTask);
+    setHasPromptedSampleSelection(false);
 
     const timestamp = Date.now();
 
@@ -271,7 +275,7 @@ export function AuditFlowDemo() {
   }
 
   function handleApprove(sample: SampleEvaluation) {
-    if (stage !== "evaluating" || !sessionId) return;
+    if (!sessionId) return;
 
     setLocalMessages((prev) => [
       ...prev,
@@ -333,27 +337,61 @@ export function AuditFlowDemo() {
     setLocalMessages([]);
     setSubmitError(null);
     prevMsgCount.current = 0;
+    setSelectedAgentId(null);
+    setHasPromptedSampleSelection(false);
   }
 
-  function handleOpenDetailedReview(agentId: string) {
-    samplePanelRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-
-    setHighlightedAgentId(agentId);
-    if (highlightTimerRef.current) {
-      clearTimeout(highlightTimerRef.current);
+  function handleEditRequirements() {
+    handleReset();
+    if (lastSubmittedTask) {
+      setTaskDescription(lastSubmittedTask);
     }
-    highlightTimerRef.current = setTimeout(() => {
-      setHighlightedAgentId(null);
-      highlightTimerRef.current = null;
-    }, 1000);
+  }
+
+  function handleSelectSample(agentId: string) {
+    setSelectedAgentId(agentId);
   }
 
   const hasSession = !!session;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
-  const hasSamplesReady = stage === "evaluating" && !!evaluatingState && evaluatingState.samples.length > 0;
+  const latestScoredSamples = useMemo(() => {
+    if (!session?.messages?.length) return [] as SampleEvaluation[];
+
+    for (let i = session.messages.length - 1; i >= 0; i -= 1) {
+      const message = session.messages[i];
+      if (message.kind === "scoreCanvas" && message.samples && message.samples.length > 0) {
+        return message.samples;
+      }
+    }
+
+    return [] as SampleEvaluation[];
+  }, [session?.messages]);
+  const panelSamples = evaluatingState?.samples?.length
+    ? evaluatingState.samples
+    : latestScoredSamples;
+  const hasSamplesReady = panelSamples.length > 0;
+  const showMiddlePanel = hasSamplesReady && isMdUp;
+
+  useEffect(() => {
+    if (panelSamples.length === 0) return;
+    if (!selectedAgentId || !panelSamples.some((s) => s.agentId === selectedAgentId)) {
+      setSelectedAgentId(panelSamples[0].agentId);
+    }
+  }, [panelSamples, selectedAgentId]);
+
+  useEffect(() => {
+    if (!hasSamplesReady || hasPromptedSampleSelection) return;
+    setLocalMessages((prev) => [
+      ...prev,
+      {
+        source: "assistant",
+        id: `assistant-${Date.now()}`,
+        text: "Please choose one sample in the Sample Area, then confirm to continue.",
+        ts: Date.now(),
+      },
+    ]);
+    setHasPromptedSampleSelection(true);
+  }, [hasPromptedSampleSelection, hasSamplesReady]);
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -376,7 +414,11 @@ export function AuditFlowDemo() {
         {/* Chat column */}
         <div
           className={`flex flex-col overflow-hidden ${
-            hasSamplesReady ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0" : hasSession ? "flex-1" : "w-full"
+            showMiddlePanel
+              ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0"
+              : hasSession
+                ? "flex-1"
+                : "w-full"
           }`}
         >
           <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
@@ -384,36 +426,49 @@ export function AuditFlowDemo() {
               {!sessionId && (
                 <div>
                   <OrchestratorLabel />
-                  <p className="font-mono text-xs leading-relaxed text-zinc-500">
-                    // READY — describe a task to start the auction pipeline
+                  <p className="text-xs leading-relaxed text-zinc-500">
+                    Ready. Describe a task to start the auction pipeline.
                   </p>
                 </div>
               )}
 
-              {displayMessages.map((dm, i) => {
-                if (dm.source === "user") {
-                  return <UserMessage key={dm.id} id={dm.id} text={dm.text} />;
-                }
-                if (dm.source === "assistant") {
-                  return <AssistantMessage key={dm.id} id={dm.id} text={dm.text} />;
-                }
-                const backend = dm as Extract<DisplayMessage, { source: "backend" }>;
-                const prevDm = i > 0 ? displayMessages[i - 1] : null;
-                const showLabel = !prevDm || prevDm.source === "user";
-                return (
-                  <div key={backend.msg.id}>
-                    {showLabel && <OrchestratorLabel />}
+              {(() => {
+                const nodes: React.ReactNode[] = [];
+                let i = 0;
+                while (i < displayMessages.length) {
+                  const dm = displayMessages[i];
+
+                  if (dm.source === "user") {
+                    nodes.push(<UserMessage key={dm.id} id={dm.id} text={dm.text} />);
+                    i += 1;
+                    continue;
+                  }
+
+                  if (dm.source === "assistant") {
+                    nodes.push(<AssistantMessage key={dm.id} id={dm.id} text={dm.text} />);
+                    i += 1;
+                    continue;
+                  }
+
+                  const grouped: OrchestratorMessage[] = [];
+                  while (i < displayMessages.length && displayMessages[i].source === "backend") {
+                    const backend = displayMessages[i] as Extract<DisplayMessage, { source: "backend" }>;
+                    grouped.push(backend.msg);
+                    i += 1;
+                  }
+
+                  nodes.push(
                     <BackendMessage
-                      message={backend.msg}
+                      key={`backend-group-${grouped[0]?.id ?? i}`}
+                      messages={grouped}
                       canApprove={stage === "evaluating"}
                       isPending={isPending}
                       onApprove={handleApprove}
-                      compactSamples={hasSamplesReady}
-                      onOpenDetails={handleOpenDetailedReview}
-                    />
-                  </div>
-                );
-              })}
+                    />,
+                  );
+                }
+                return nodes;
+              })()}
 
               {stage === "delivered" && <AuditTrail events={session?.auditTrail ?? []} />}
 
@@ -440,23 +495,25 @@ export function AuditFlowDemo() {
         </div>
 
         {/* Middle detail panel */}
-        {hasSamplesReady && (
+        {showMiddlePanel && (
           <div ref={samplePanelRef} className="hidden min-w-0 flex-1 md:block">
             <div className="h-full">
               <AgentConfirmPanel
-                samples={evaluatingState?.samples ?? []}
+                samples={panelSamples}
                 bids={evaluatingState?.bids ?? []}
                 isPending={isPending}
                 onApprove={handleApprove}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={handleSelectSample}
+                onEditRequirements={handleEditRequirements}
                 layout="main"
-                highlightedAgentId={highlightedAgentId}
               />
             </div>
           </div>
         )}
       </div>
 
-      <aside className="fixed top-14 right-0 bottom-0 z-20 hidden items-start md:flex">
+      <aside className="fixed top-14 right-0 bottom-0 z-20 hidden items-start lg:flex">
         <button
           type="button"
           onClick={() => setIsFlowOpen((open) => !open)}
@@ -485,7 +542,7 @@ export function AuditFlowDemo() {
         </button>
 
         {isFlowOpen && (
-          <div className="h-full w-64 border-l border-zinc-200 bg-zinc-50 xl:w-72">
+          <div className="h-full w-60 border-l border-zinc-200 bg-zinc-50 xl:w-72">
             {session ? (
               <ExecutionFlow
                 state={session.state}

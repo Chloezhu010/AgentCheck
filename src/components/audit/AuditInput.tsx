@@ -26,12 +26,11 @@ export function AuditInput({
         onSubmit={onSubmit}
       >
         <div className="flex flex-1 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 focus-within:border-zinc-400 focus-within:bg-white">
-          <span className="flex-shrink-0 font-mono text-xs text-zinc-300">//</span>
           <input
             type="text"
             value={taskDescription}
             onChange={(e) => onTaskChange(e.target.value)}
-            placeholder={placeholder ?? (disabled ? "AUCTION_IN_PROGRESS..." : "ENTER_TASK_PROMPT...")}
+            placeholder={placeholder ?? (disabled ? "Auction in progress..." : "Describe what you want built...")}
             disabled={disabled || isSubmitting}
             className="flex-1 bg-transparent font-mono text-xs text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50"
           />
