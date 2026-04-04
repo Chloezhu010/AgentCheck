@@ -1,7 +1,9 @@
 import type {
+  DeliveryComicFrame,
   DeliveryReport,
   IntentWeights,
 } from "@/types/audit";
+import type { AgentTaskKind } from "@/types/agent";
 
 export function normalizeWeights(weights: IntentWeights): IntentWeights {
   const total = weights.quality + weights.price + weights.speed;
@@ -36,14 +38,31 @@ export function validateIntentInput(prompt: string, budgetUsd: string): string |
 export function buildDeliveryReport(
   selectedAgent: string,
   taskDescription: string,
+  output?: {
+    taskKind?: AgentTaskKind;
+    imageDataUrl?: string;
+    comicFrames?: DeliveryComicFrame[];
+    generatorNotes?: string;
+  },
 ): DeliveryReport {
+  const frameCount = output?.comicFrames?.length ?? 0;
+  const isFourPanel = output?.taskKind === "four-panel-comic";
+
   return {
-    title: `${selectedAgent} — Full Delivery`,
+    title: isFourPanel
+      ? `${selectedAgent} — 4-Panel Comic Delivery`
+      : `${selectedAgent} — Full Delivery`,
     highlights: [
-      "Production-ready React component with MetaMask + WalletConnect support.",
-      "Animated neon glow transitions, error and loading states, mobile-responsive layout.",
+      isFourPanel
+        ? `Delivered ${frameCount || 4} coherent comic panels with consistent characters and tone.`
+        : "Delivered one final image aligned with the approved sample direction.",
+      "Maintained agent persona style and continuity constraints across delivery.",
       "All bid, trial scoring, and payment checkpoints include Hedera audit references.",
     ],
-    markdownPreview: `# Delivery Summary\n\nTask: ${taskDescription}\n\n- Selected agent: ${selectedAgent}\n- Outcome: Delivered\n- Next step: Export component or trigger next subtask auction`,
+    markdownPreview: `# Delivery Summary\n\nTask: ${taskDescription}\n\n- Selected agent: ${selectedAgent}\n- Outcome: Delivered\n- Delivery type: ${isFourPanel ? "4-panel comic" : "single image"}\n- Next step: Review output quality and request iteration if needed`,
+    taskKind: output?.taskKind,
+    imageDataUrl: output?.imageDataUrl,
+    comicFrames: output?.comicFrames,
+    generatorNotes: output?.generatorNotes,
   };
 }

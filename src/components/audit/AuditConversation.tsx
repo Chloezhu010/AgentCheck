@@ -7,12 +7,13 @@ import {
 } from "@/components/audit/ChatMessage";
 import { AuditTrail } from "@/components/audit/AuditTrail";
 import type { RefObject, ReactNode } from "react";
-import type { AuditSession, OrchestratorMessage } from "@/types/audit";
+import type { AuditSession, DeliveryReport, OrchestratorMessage } from "@/types/audit";
 import type { DisplayMessage } from "@/components/audit/useAuditFlowController";
 
 type AuditConversationProps = {
   auditTrail: AuditSession["auditTrail"];
   chatEndRef: RefObject<HTMLDivElement | null>;
+  delivery: DeliveryReport | null;
   displayMessages: DisplayMessage[];
   isTyping: boolean;
   sessionId: string | null;
@@ -22,6 +23,7 @@ type AuditConversationProps = {
 export function AuditConversation({
   auditTrail,
   chatEndRef,
+  delivery,
   displayMessages,
   isTyping,
   sessionId,
@@ -40,6 +42,7 @@ export function AuditConversation({
 
       {renderConversationMessages(displayMessages)}
 
+      {stage === "delivered" && delivery && <DeliveryShowcase delivery={delivery} />}
       {stage === "delivered" && <AuditTrail events={auditTrail} />}
 
       {isTyping && (
@@ -50,6 +53,57 @@ export function AuditConversation({
       )}
 
       <div ref={chatEndRef} />
+    </div>
+  );
+}
+
+function DeliveryShowcase({ delivery }: { delivery: DeliveryReport }) {
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <OrchestratorLabel />
+      <div className="max-w-[95%] rounded-2xl border border-zinc-200 bg-white px-3.5 py-3 text-sm text-zinc-800">
+        <p className="text-xs font-semibold text-zinc-900">{delivery.title}</p>
+
+        {delivery.taskKind === "four-panel-comic" && delivery.comicFrames && delivery.comicFrames.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {delivery.comicFrames.map((frame) => (
+              <div key={`panel-${frame.panelNumber}`} className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                <div className="border-b border-zinc-200 px-2 py-1">
+                  <p className="text-[10px] font-semibold text-zinc-700">
+                    Panel {frame.panelNumber}
+                  </p>
+                  <p className="line-clamp-1 text-[10px] text-zinc-500">{frame.beat}</p>
+                </div>
+                <img
+                  src={frame.imageDataUrl}
+                  alt={`Comic panel ${frame.panelNumber}`}
+                  className="w-full"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {delivery.taskKind !== "four-panel-comic" && delivery.imageDataUrl && (
+          <img src={delivery.imageDataUrl} alt="Delivery output" className="mt-3 w-full rounded-lg border border-zinc-200" />
+        )}
+
+        {delivery.generatorNotes && (
+          <p className="mt-3 whitespace-pre-line text-xs leading-relaxed text-zinc-600">
+            {delivery.generatorNotes}
+          </p>
+        )}
+
+        {delivery.highlights.length > 0 && (
+          <div className="mt-3 space-y-1">
+            {delivery.highlights.map((highlight, idx) => (
+              <p key={`${idx}-${highlight.slice(0, 20)}`} className="text-xs text-zinc-600">
+                • {highlight}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
