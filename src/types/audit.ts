@@ -1,4 +1,4 @@
-// ── Primitives ────────────────────────────────────────────────────────────────
+// Primitives
 
 export type FlowStage = "idle" | "bidding" | "evaluating" | "delivered" | "error";
 
@@ -8,7 +8,7 @@ export type IntentWeights = {
   speed: number;
 };
 
-// ── Domain models (used by server + lib) ──────────────────────────────────────
+// Domain models (used by server + lib)
 
 export type AgentBid = {
   id: string;
@@ -30,13 +30,15 @@ export type SampleEvaluation = {
   recommendation: string;
   sampleTitle: string;
   summary: string;
+  imageDataUrl?: string;
 };
 
 export type AuditEvent = {
   id: string;
   label: string;
-  status: "logged" | "pending";
+  status: "logged" | "pending" | "failed";
   txUrl: string;
+  hcsSequenceNumber?: number;
 };
 
 export type DeliveryReport = {
@@ -45,7 +47,17 @@ export type DeliveryReport = {
   markdownPreview: string;
 };
 
-// ── Session (server-owned state machine) ──────────────────────────────────────
+// Orchestrator-generated messages (backend owns the narrative)
+
+export type OrchestratorMessage = {
+  id: string;
+  ts: number;
+  text: string;
+  kind: "text" | "scoreCanvas";
+  samples?: SampleEvaluation[];
+};
+
+// Session (server-owned state machine)
 
 export type IntentInput = {
   taskDescription: string;
@@ -70,11 +82,13 @@ export type AuditSession = {
   id: string;
   input: IntentInput;
   state: AuditSessionState;
+  messages: OrchestratorMessage[];
+  auditTrail: AuditEvent[];
   createdAt: number;
   updatedAt: number;
 };
 
-// ── UI layer types ─────────────────────────────────────────────────────────────
+// UI layer types
 
 export type ChatMessage = {
   id: string;
@@ -84,7 +98,7 @@ export type ChatMessage = {
   samples?: SampleEvaluation[];
 };
 
-// ── API response shapes ────────────────────────────────────────────────────────
+// API response shapes
 
 export type ApiError = { error: string };
 export type SessionResponse = { session: AuditSession };
