@@ -38,6 +38,52 @@ Uses World ID 4.0 as a real constraint (eligibility, uniqueness, fairness, reput
 Proof validation is required and needs to occur in a web backend or smart contract.
 Link: https://docs.world.org/world-id/overview
 
+#### Our Implementation
+
+World ID 4.0 is used as two workflow gates that block progression unless a real human verifies. The app breaks without proof of human — removing the gates would let bots spam auctions and drain escrow.
+
+**Gate 1 — Create Audit (before auction starts)**
+- Action: `create-audit`, Scope: `draft:{uuid}` (unique per attempt)
+- A user cannot start an auction without proving they are human
+- Satisfies: eligibility
+
+**Gate 2 — Approve Payment (before escrow release)**
+- Action: `approve-payment`, Scope: `audit:{sessionId}`
+- The same human cannot approve the same audit twice (nullifier + scope uniqueness)
+- Satisfies: uniqueness, fairness
+
+**Backend proof validation flow:**
+1. Client requests a signed RP context from `POST /api/world-id/rp-signature` (signed with `WORLD_RP_SIGNING_KEY`, never exposed to client)
+2. IDKit React widget opens a QR modal; user scans with World App / Simulator
+3. ZK proof is forwarded to `POST /api/world-id/verify`, which calls World's `POST /api/v4/verify/{rp_id}` server-side
+4. After World confirms, backend enforces scoped uniqueness: `UNIQUE(action, scope, nullifier)` — rejects duplicates with 409
+5. Optional `session_id` tracking is stored for future rate-limiting and reputation
+
+**4.0-specific patterns used:**
+- `rp_context` with backend-signed nonce (required in 4.0)
+- Nullifiers treated as one-time proof identifiers, not stable user IDs (4.0 migration guidance)
+- `session_id` stored for continuity/reputation (4.0 primitive)
+- `orbLegacy` preset with `allow_legacy_proofs: true` for staging compatibility
+- `environment: "staging"` for simulator-based development and demo
+
+**Key files:**
+- `src/app/api/world-id/rp-signature/route.ts` — signs RP context (server-only)
+- `src/app/api/world-id/verify/route.ts` — verifies proof with World API + enforces business rules
+- `src/server/world-id-store.ts` — scoped nullifier store (in-memory for demo, schema for production)
+- `src/components/audit/WorldIdGate.tsx` — React hook + QR modal widget
+- `src/lib/world-id.ts` — shared action names and scope helpers
+
+**Why this satisfies the bounty:**
+
+| Requirement | How we meet it |
+|---|---|
+| **"Products that break without proof of human"** | Remove the gates and any bot can spam auctions and drain escrow. World ID is not a cosmetic badge — it is a hard prerequisite at two critical payment moments. |
+| **Eligibility** | Gate 1 blocks unverified users from starting auctions. No proof = no auction. |
+| **Uniqueness** | Scoped nullifier store prevents the same human from approving the same audit twice (`action + scope + nullifier`). |
+| **Fairness** | One human, one approval per audit. A user cannot game the system by approving multiple times or from multiple sessions. |
+| **Rate limits** | `session_id` tracking is wired and ready for per-session rate limiting (e.g., max N auctions per session). |
+| **Proof validation in web backend** | Proofs are verified server-side via World's `POST /api/v4/verify/{rp_id}` — never trusted on the client. Business rules enforced after verification. |
+
 ### 🤖 Best use of Agent Kit ⸺ $8,000
 🥇
 1st place
