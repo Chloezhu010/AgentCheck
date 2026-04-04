@@ -2,7 +2,7 @@ import { getPersona } from "@/server/agents/personas";
 import { getStoredSamples } from "@/server/tools/business";
 import { buildDeliveryReport } from "@/lib/audit-demo-data";
 import { makeMsg } from "@/server/orchestrator-session";
-import type { AgentBid, SampleEvaluation } from "@/types/audit";
+import type { AgentBid, DeliveryReport, SampleEvaluation } from "@/types/audit";
 import type { SessionEntry, SelectedAgent } from "@/server/orchestrator-session";
 
 export type AuditPayload = { t?: string; agentId?: string; d?: unknown } | null;
@@ -92,6 +92,7 @@ export function syncSessionFromAuditEvent(
 export function setDeliveredState(
   entry: SessionEntry,
   selection?: SelectedAgent | null,
+  delivery?: DeliveryReport,
 ): void {
   const resolvedSelection = selection ?? deriveFallbackSelection(entry, entry.session.id);
   const agentId = resolvedSelection?.agentId ?? "selected-agent";
@@ -103,7 +104,7 @@ export function setDeliveredState(
     approvedAgentId: agentId,
     approvedAgentName: agentName,
     quoteUsd,
-    delivery: buildDeliveryReport(agentName, entry.session.input.taskDescription),
+    delivery: delivery ?? buildDeliveryReport(agentName, entry.session.input.taskDescription),
     auditEvents: entry.session.auditTrail,
   };
   entry.session.pendingQuestion = undefined;
@@ -179,23 +180,47 @@ function buildFallbackSamples(
     "agent-alpha": 0.86,
     "agent-gamma": 0.79,
   };
+  const breakdownMap: Record<string, { quality: number; price: number; speed: number }> = {
+    "agent-beta": { quality: 0.92, price: 0.84, speed: 0.9 },
+    "agent-alpha": { quality: 0.9, price: 0.78, speed: 0.86 },
+    "agent-gamma": { quality: 0.76, price: 0.9, speed: 0.7 },
+  };
 
   return bids
-    .map((bid) => ({
-      id: `fallback-${bid.id}`,
-      agentId: bid.id,
-      agentName: bid.agentName,
-      model: bid.model,
-      score: scoreMap[bid.id] ?? 0.75,
-      recommendation:
-        bid.id === "agent-beta"
-          ? "Best overall balance of quality and delivery confidence for the requested output."
-          : bid.id === "agent-alpha"
-            ? "Strong visual quality and fast turnaround, with slightly higher execution variance."
-            : "Cost-efficient option with simpler style output and slower turnaround.",
-      sampleTitle: `${bid.agentName} Fallback Sample`,
-      summary: `Fallback preview generated for demo continuity. Task focus: ${taskDescription.slice(0, 140)}.`,
-    }))
+    .map((bid) => {
+      const persona = getPersona(bid.id);
+
+      return {
+        id: `fallback-${bid.id}`,
+        agentId: bid.id,
+        agentName: bid.agentName,
+        model: bid.model,
+        score: scoreMap[bid.id] ?? 0.75,
+        recommendation:
+          bid.id === "agent-beta"
+            ? "Best overall balance of quality and delivery confidence for the requested output."
+            : bid.id === "agent-alpha"
+              ? "Strong visual quality and fast turnaround, with slightly higher execution variance."
+              : "Cost-efficient option with simpler style output and slower turnaround.",
+        sampleTitle: `${bid.agentName} Fallback Sample`,
+        summary: `Fallback preview generated for demo continuity. Task focus: ${taskDescription.slice(0, 140)}.`,
+        scoreBreakdown: breakdownMap[bid.id] ?? { quality: 0.75, price: 0.75, speed: 0.75 },
+        persona: persona
+          ? {
+              personality: persona.personality,
+              taste: persona.taste,
+              skills: persona.skills,
+            }
+          : undefined,
+        plan: {
+          concept: "Fallback execution concept for demo continuity.",
+          samplePlan: "Generate one representative sample image to validate style direction.",
+          deliverPlan: "Deliver final output after approval with consistent quality checks.",
+          qualityRisk: "Style consistency may drift without iterative feedback.",
+          panelFlow: [],
+        },
+      };
+    })
     .sort((a, b) => b.score - a.score);
 }
 
