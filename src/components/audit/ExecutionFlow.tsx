@@ -160,7 +160,7 @@ export function ExecutionFlow({ state, countdownSeconds }: ExecutionFlowProps) {
 
       {state.stage === "delivered" && (
         <div className="mt-auto pt-4">
-          <p className="text-emerald-600">// TASK_COMPLETE ✓</p>
+          <p className="text-emerald-600">{"// TASK_COMPLETE ✓"}</p>
           <p className="mt-1 text-zinc-400">
             AGENT: {(state as Extract<AuditSessionState, { stage: "delivered" }>).approvedAgentName}
           </p>

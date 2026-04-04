@@ -85,6 +85,7 @@ export function createSession(input: IntentInput): AuditSession {
     id,
     input,
     state: { stage: "agentic" },
+    pendingQuestion: undefined,
     messages: [
       makeMsg(
         `Task received. Starting autonomous procurement for: "${input.taskDescription}" with budget $${input.budgetUsd.toFixed(2)}.`,
@@ -145,12 +146,12 @@ export function respondToAgent(
   const entry = sessions.get(sessionId);
   if (!entry) return { error: "Session not found" };
 
-  if (entry.session.state.stage !== "agentic") {
-    return { error: `Cannot respond in stage: ${entry.session.state.stage}` };
+  if (!entry.session.pendingQuestion) {
+    return { error: "No pending question to respond to" };
   }
 
-  // Clear pending question
-  entry.session.state = { stage: "agentic" };
+  // Clear pending question while keeping workflow stage untouched.
+  entry.session.pendingQuestion = undefined;
 
   // Respond as a functionResponse for the pending ask_user call so the
   // model sees one clean turn instead of a placeholder + separate user text.
@@ -281,10 +282,7 @@ async function processToolCalls(
       entry.session.messages.push(
         makeMsg(question, "text", { options }),
       );
-      entry.session.state = {
-        stage: "agentic",
-        pendingQuestion: { question, options },
-      };
+      entry.session.pendingQuestion = { question, options };
       entry.pendingAskCallId = call.id;
       entry.session.updatedAt = Date.now();
 
@@ -299,6 +297,12 @@ async function processToolCalls(
 
       if (name === "broadcast_rfq") {
         entry.currentBids = coerceBidsFromToolResult(result);
+        entry.session.state = {
+          stage: "bidding",
+          visibleBids: entry.currentBids,
+          countdownSeconds: 0,
+        };
+        entry.session.updatedAt = Date.now();
       }
 
       // Track audit events from HCS submissions
@@ -330,6 +334,12 @@ async function processToolCalls(
           entry.session.messages.push(
             makeMsg("", "scoreCanvas", { samples }),
           );
+          entry.session.state = {
+            stage: "evaluating",
+            bids: entry.currentBids,
+            samples,
+          };
+          entry.session.updatedAt = Date.now();
         }
       }
     } catch (err) {
@@ -501,6 +511,8 @@ function setDeliveredState(
     delivery: buildDeliveryReport(agentName, entry.session.input.taskDescription),
     auditEvents: entry.session.auditTrail,
   };
+  entry.session.pendingQuestion = undefined;
+  entry.pendingAskCallId = undefined;
   entry.session.updatedAt = Date.now();
 }
 

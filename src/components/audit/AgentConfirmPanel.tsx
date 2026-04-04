@@ -24,19 +24,21 @@ export function AgentConfirmPanel({
   onEditRequirements,
   layout = "sidebar",
 }: AgentConfirmPanelProps) {
-  if (samples.length === 0) return null;
-
   const selectedSample = useMemo(
-    () =>
-      (selectedAgentId
+    () => {
+      if (samples.length === 0) return null;
+      return (selectedAgentId
         ? samples.find((sample) => sample.agentId === selectedAgentId)
-        : null) ?? samples[0],
+        : null) ?? samples[0];
+    },
     [samples, selectedAgentId],
   );
   const selectedBid = useMemo(
-    () => bids.find((bid) => bid.id === selectedSample.agentId) ?? null,
-    [bids, selectedSample.agentId],
+    () => (selectedSample ? bids.find((bid) => bid.id === selectedSample.agentId) ?? null : null),
+    [bids, selectedSample],
   );
+  if (!selectedSample) return null;
+
   const scorePercent = Math.round(selectedSample.score * 100);
 
   const containerClass =
