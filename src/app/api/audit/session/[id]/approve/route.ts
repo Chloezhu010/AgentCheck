@@ -1,4 +1,4 @@
-import { approveAgent } from "@/server/orchestrator";
+import { finalizeDelivery } from "@/server/orchestrator";
 import { ApproveAgentSchema } from "@/lib/validation";
 import type { ApiError, SessionResponse } from "@/types/audit";
 
@@ -23,7 +23,7 @@ export async function POST(
     );
   }
 
-  const result = await approveAgent(id, parsed.data.agentId);
+  const result = finalizeDelivery(id, parsed.data.agentId);
   if ("error" in result) {
     return Response.json({ error: result.error } satisfies ApiError, { status: 400 });
   }

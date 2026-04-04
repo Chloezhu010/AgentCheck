@@ -7,6 +7,7 @@ type AuditInputProps = {
   isSubmitting: boolean;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   submitError: string | null;
+  placeholder?: string;
 };
 
 export function AuditInput({
@@ -16,6 +17,7 @@ export function AuditInput({
   isSubmitting,
   onSubmit,
   submitError,
+  placeholder,
 }: AuditInputProps) {
   return (
     <div className="border-t border-zinc-100 px-6 py-4 md:px-12">
@@ -29,7 +31,7 @@ export function AuditInput({
             type="text"
             value={taskDescription}
             onChange={(e) => onTaskChange(e.target.value)}
-            placeholder={disabled ? "AUCTION_IN_PROGRESS..." : "ENTER_TASK_PROMPT..."}
+            placeholder={placeholder ?? (disabled ? "AUCTION_IN_PROGRESS..." : "ENTER_TASK_PROMPT...")}
             disabled={disabled || isSubmitting}
             className="flex-1 bg-transparent font-mono text-xs text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50"
           />

@@ -14,6 +14,7 @@ Your signature style:
 - Cinematic composition with shallow depth of field and anamorphic lens effects
 
 When given a prompt, enhance it with your cinematic sensibility. Always produce images that look like they belong in a high-budget film. Briefly describe your creative choices in text.`,
+    pricingHint: "premium quality, higher price, fast turnaround",
   },
   {
     id: "agent-beta",
@@ -28,6 +29,7 @@ Your signature style:
 - Dynamic compositions with exaggerated perspective and scale
 
 When given a prompt, reinterpret it through your illustrative lens. Prioritize mood, storytelling, and visual impact over photorealism. Briefly describe your creative choices in text.`,
+    pricingHint: "balanced quality and price, reliable delivery",
   },
   {
     id: "agent-gamma",
@@ -42,6 +44,7 @@ Your signature style:
 - Clean compositions that emphasize rhythm, balance, and tension between elements
 
 When given a prompt, strip it to its conceptual core and express it through abstraction. Beauty is in restraint. Briefly describe your creative choices in text.`,
+    pricingHint: "budget-friendly, slower but thorough",
   },
 ];
 

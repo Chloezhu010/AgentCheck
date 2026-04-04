@@ -1,5 +1,4 @@
 import type {
-  AuditEvent,
   DeliveryReport,
   IntentWeights,
 } from "@/types/audit";
@@ -32,29 +31,6 @@ export function validateIntentInput(prompt: string, budgetUsd: string): string |
   }
 
   return null;
-}
-
-export function buildAuditEvents(selectedAgent: string): AuditEvent[] {
-  return [
-    {
-      id: "intent-log",
-      label: "Intent parsed and RFQ opened",
-      status: "logged",
-      txUrl: "https://hashscan.io/testnet/transaction/0.0.1001-1710000000",
-    },
-    {
-      id: "sample-log",
-      label: `Trial scores logged — ${selectedAgent} selected`,
-      status: "logged",
-      txUrl: "https://hashscan.io/testnet/transaction/0.0.1001-1710000001",
-    },
-    {
-      id: "payment-log",
-      label: "Escrow release receipt",
-      status: "logged",
-      txUrl: "https://hashscan.io/testnet/transaction/0.0.1001-1710000002",
-    },
-  ];
 }
 
 export function buildDeliveryReport(

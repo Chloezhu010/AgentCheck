@@ -19,6 +19,7 @@ function stepsForStage(stage: AuditSessionState["stage"]): Step[] {
   ];
 
   const activeIndex: Record<AuditSessionState["stage"], number> = {
+    agentic: 3,
     bidding: 2,
     evaluating: 4,
     delivered: 6,

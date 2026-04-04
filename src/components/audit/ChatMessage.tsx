@@ -49,6 +49,25 @@ export function BackendMessage({
   compactSamples = false,
   onOpenDetails,
 }: BackendMessageProps) {
+  // Tool calls render as compact action pills, not full chat bubbles
+  if (message.kind === "toolCall") {
+    return (
+      <div
+        key={message.id}
+        className="flex items-center gap-2 pl-8 animate-in fade-in duration-200"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-zinc-300" />
+        <span
+          className="text-[11px] text-zinc-400"
+          dangerouslySetInnerHTML={{ __html: boldify(message.text) }}
+        />
+      </div>
+    );
+  }
+
+  // Regular text message
+  if (!message.text && !(message.kind === "scoreCanvas" && message.samples?.length)) return null;
+
   return (
     <div
       key={message.id}
@@ -59,6 +78,19 @@ export function BackendMessage({
           className="font-mono text-xs leading-relaxed text-zinc-500 [&>strong]:font-semibold [&>strong]:text-zinc-800"
           dangerouslySetInnerHTML={{ __html: boldify(message.text) }}
         />
+      )}
+
+      {message.options && message.options.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {message.options.map((opt) => (
+            <span
+              key={opt}
+              className="rounded-full border border-zinc-300 bg-white px-2.5 py-1 font-mono text-[11px] font-medium text-zinc-600"
+            >
+              {opt}
+            </span>
+          ))}
+        </div>
       )}
 
       {message.kind === "scoreCanvas" && message.samples && message.samples.length > 0 && (

@@ -57,7 +57,10 @@ export function AuditFlowDemo() {
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stage = session?.state.stage ?? null;
-  const isFlowRunning = stage === "bidding" || stage === "evaluating";
+  const hasPendingQuestion =
+    session?.state.stage === "agentic" && !!session.state.pendingQuestion;
+  const isAgentWorking = stage === "agentic" && !hasPendingQuestion;
+  const isFlowRunning = stage === "bidding" || stage === "evaluating" || isAgentWorking;
 
   const totalBudget = DEFAULT_BUDGET_USD;
 
@@ -104,28 +107,98 @@ export function AuditFlowDemo() {
     };
   }, []);
 
-  // Polling
   useEffect(() => {
-    if (!sessionId || stage === "delivered" || stage === "error") return;
+    if (!sessionId || !isFlowRunning) return;
 
-    const interval = setInterval(async () => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let inFlightController: AbortController | null = null;
+
+    const poll = async () => {
+      inFlightController = new AbortController();
+
       try {
-        const res = await fetch(`/api/audit/session/${sessionId}`);
-        if (!res.ok) return;
+        const res = await fetch(`/api/audit/session/${sessionId}`, {
+          signal: inFlightController.signal,
+        });
+        if (!res.ok || cancelled) return;
+
         const data = (await res.json()) as { session: AuditSession };
-        setSession(data.session);
-      } catch {
+        if (!cancelled) {
+          setSession(data.session);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
         // silently ignore transient fetch errors
+      } finally {
+        inFlightController = null;
+        if (!cancelled) {
+          timeoutId = setTimeout(() => {
+            void poll();
+          }, POLL_INTERVAL_MS);
+        }
       }
+    };
+
+    timeoutId = setTimeout(() => {
+      void poll();
     }, POLL_INTERVAL_MS);
 
-    return () => clearInterval(interval);
-  }, [sessionId, stage]);
+    return () => {
+      cancelled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      inFlightController?.abort();
+    };
+  }, [isFlowRunning, sessionId]);
 
-  function handleStartAuction(event: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!taskDescription.trim()) return;
 
+    // If a session exists and the agent is waiting for user input, chat instead
+    if (sessionId && hasPendingQuestion) {
+      handleChat();
+      return;
+    }
+
+    handleStartAuction();
+  }
+
+  function handleChat() {
+    if (!sessionId) return;
+
+    const userText = taskDescription;
+    setTaskDescription("");
+    setSubmitError(null);
+
+    const timestamp = Date.now();
+    setLocalMessages((prev) => [
+      ...prev,
+      { source: "user", id: `user-${timestamp}`, text: userText, ts: timestamp },
+    ]);
+
+    startSubmit(async () => {
+      const res = await fetch(`/api/audit/session/${sessionId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error ?? "Failed to send message");
+        return;
+      }
+
+      setSession((data as { session: AuditSession }).session);
+    });
+  }
+
+  function handleStartAuction() {
     setSubmitError(null);
 
     const userTask = taskDescription;
@@ -173,12 +246,12 @@ export function AuditFlowDemo() {
       const res = await fetch("/api/audit/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            taskDescription: userTask,
-            budgetUsd: totalBudget,
-            weights: DEFAULT_WEIGHTS,
-          }),
-        });
+        body: JSON.stringify({
+          taskDescription: userTask,
+          budgetUsd: totalBudget,
+          weights: DEFAULT_WEIGHTS,
+        }),
+      });
 
       const data = await res.json();
 
@@ -358,10 +431,11 @@ export function AuditFlowDemo() {
           <AuditInput
             taskDescription={taskDescription}
             onTaskChange={setTaskDescription}
-            disabled={isFlowRunning}
+            disabled={isFlowRunning && !hasPendingQuestion}
             isSubmitting={isSubmitting}
-            onSubmit={handleStartAuction}
+            onSubmit={handleSubmit}
             submitError={submitError}
+            placeholder={hasPendingQuestion ? "Reply to the agent..." : undefined}
           />
         </div>
 
