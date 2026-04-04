@@ -40,21 +40,15 @@ export function AuditHeader({
       {/* Center: status */}
       <div className="flex flex-1 items-center justify-center gap-3">
         {stage === "bidding" && (
-          <span className="font-mono text-xs text-amber-600">
-            // BIDDING {countdownSeconds}s
-          </span>
+          <span className="text-xs text-amber-600">Bidding ends in {countdownSeconds}s</span>
         )}
 
         {stage === "evaluating" && (
-          <span className="font-mono text-xs text-blue-600 animate-pulse">
-            // EVALUATING_SAMPLES...
-          </span>
+          <span className="text-xs text-blue-600 animate-pulse">Evaluating samples...</span>
         )}
 
         {stage === "delivered" && (
-          <span className="font-mono text-xs text-emerald-600">
-            // TASK_COMPLETE ✓
-          </span>
+          <span className="text-xs text-emerald-600">Task complete</span>
         )}
       </div>
 
