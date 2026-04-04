@@ -84,11 +84,37 @@ function renderConversationMessages(displayMessages: DisplayMessage[]): ReactNod
       continue;
     }
 
-    const groupedMessages: OrchestratorMessage[] = [];
-    while (i < displayMessages.length && displayMessages[i].source === "backend") {
-      const backendMessage = displayMessages[i] as Extract<DisplayMessage, { source: "backend" }>;
-      groupedMessages.push(backendMessage.msg);
+    if (displayMessage.source !== "backend") {
       i += 1;
+      continue;
+    }
+
+    const backendCurrent = displayMessage.msg;
+    if (backendCurrent.kind === "text" || backendCurrent.kind === "thought") {
+      nodes.push(
+        <AssistantMessage
+          key={backendCurrent.id}
+          id={backendCurrent.id}
+          text={backendCurrent.text}
+        />,
+      );
+      i += 1;
+      continue;
+    }
+
+    const groupedMessages: OrchestratorMessage[] = [];
+    while (i < displayMessages.length) {
+      const candidate = displayMessages[i];
+      if (candidate.source !== "backend") break;
+      if (candidate.msg.kind === "text" || candidate.msg.kind === "thought") break;
+
+      groupedMessages.push(candidate.msg);
+      i += 1;
+    }
+
+    if (groupedMessages.length === 0) {
+      i += 1;
+      continue;
     }
 
     nodes.push(

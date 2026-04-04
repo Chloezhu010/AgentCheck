@@ -1,6 +1,14 @@
 // Image generation agent types
 
-export type ImageAgentId = "agent-alpha" | "agent-beta" | "agent-gamma";
+export const IMAGE_AGENT_IDS = [
+  "agent-alpha",
+  "agent-beta",
+  "agent-gamma",
+  "agent-delta",
+  "agent-epsilon",
+] as const;
+
+export type ImageAgentId = (typeof IMAGE_AGENT_IDS)[number];
 
 export type AgentPersona = {
   id: ImageAgentId;

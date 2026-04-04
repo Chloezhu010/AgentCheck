@@ -1,6 +1,6 @@
 import type { Content } from "@google/genai";
 import type { ImageAgentId } from "@/types/agent";
-import type { AgentBid, AuditSession, OrchestratorMessage } from "@/types/audit";
+import type { AgentBid, AgentShortlist, AuditSession, OrchestratorMessage } from "@/types/audit";
 
 export type SelectedAgent = {
   agentId: string;
@@ -14,6 +14,7 @@ export type SessionEntry = {
   loopRunning: boolean;
   currentBids: AgentBid[];
   trialAgentIds?: ImageAgentId[];
+  shortlist?: AgentShortlist;
   selectedAgent?: SelectedAgent;
   pendingAskCallId?: string;
 };

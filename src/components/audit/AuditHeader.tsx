@@ -8,7 +8,7 @@ type AuditHeaderProps = {
 
 function getStageBadge(stage: string | null, countdownSeconds: number): string | null {
   if (stage === "bidding") {
-    return countdownSeconds > 0 ? `Bidding ${countdownSeconds}s` : null;
+    return countdownSeconds > 0 ? `Bidding ${countdownSeconds}s` : "Live RFQ";
   }
 
   if (stage === "evaluating") {

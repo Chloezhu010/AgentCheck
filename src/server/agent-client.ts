@@ -1,15 +1,11 @@
 import type { AgentBid, SampleEvaluation } from "@/types/audit";
-import type { ImageAgentId } from "@/types/agent";
+import { IMAGE_AGENT_IDS, type ImageAgentId } from "@/types/agent";
 
 const BASE_URL =
   process.env.AGENT_BASE_URL ||
   `http://localhost:${process.env.PORT || 3000}`;
 
-const AGENT_IDS: ImageAgentId[] = [
-  "agent-alpha",
-  "agent-beta",
-  "agent-gamma",
-];
+const AGENT_IDS: ImageAgentId[] = [...IMAGE_AGENT_IDS];
 
 export async function fetchBid(
   agentId: ImageAgentId,

@@ -12,6 +12,7 @@ type AgentConfirmPanelProps = {
   onSelectAgent: (agentId: string) => void;
   onEditRequirements: () => void;
   layout?: "sidebar" | "main";
+  readOnly?: boolean;
 };
 
 function sanitizeFileSegment(value: string): string {
@@ -68,6 +69,7 @@ export function AgentConfirmPanel({
   onSelectAgent,
   onEditRequirements,
   layout = "sidebar",
+  readOnly = false,
 }: AgentConfirmPanelProps) {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
@@ -151,6 +153,10 @@ export function AgentConfirmPanel({
     layout === "main"
       ? "flex h-full min-w-0 flex-1 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-6 py-6 xl:px-8"
       : "flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 py-6 xl:w-80";
+  const stickyFooterClass =
+    layout === "main"
+      ? "sticky bottom-0 -mx-6 mt-auto border-t border-zinc-200 bg-white/95 px-6 pt-4 pb-6 backdrop-blur xl:-mx-8 xl:px-8"
+      : "sticky bottom-0 -mx-5 mt-auto border-t border-zinc-200 bg-white/95 px-5 pt-4 pb-6 backdrop-blur";
 
   return (
     <div className={containerClass}>
@@ -158,7 +164,9 @@ export function AgentConfirmPanel({
         <p className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
           Sample Area
         </p>
-        <p className="mt-1 text-xs text-zinc-500">Review the selected sample and confirm.</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          {readOnly ? "Viewing selected sample details." : "Review the selected sample and confirm."}
+        </p>
       </div>
 
       <div className="mb-3 space-y-2">
@@ -261,9 +269,6 @@ export function AgentConfirmPanel({
                   Recommended
                 </span>
               )}
-              <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                Selected
-              </span>
               <span className="font-mono text-xs font-semibold text-zinc-900">
                 {selectedSample.agentName}
               </span>
@@ -317,57 +322,59 @@ export function AgentConfirmPanel({
         </p>
       </div>
 
-      <div className="mt-auto pt-5">
-        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded-lg border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-white">
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="5" />
-                  <path d="M3 12h2m14 0h2M12 3v2m0 14v2" />
-                </svg>
+      {!readOnly && (
+        <div className={stickyFooterClass}>
+          <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-sky-200 bg-gradient-to-r from-sky-50 to-cyan-50 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-white">
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <circle cx="12" cy="12" r="5" />
+                    <path d="M3 12h2m14 0h2M12 3v2m0 14v2" />
+                  </svg>
+                </div>
+                <span className="text-[11px] font-semibold text-sky-700">Secured by World ID</span>
               </div>
-              <span className="text-[11px] font-semibold text-sky-700">Secured by World ID</span>
+              <p className="mt-1 text-[11px] text-sky-700/90">
+                Identity verification is required before approval.
+              </p>
             </div>
-            <p className="mt-1 text-[11px] text-sky-700/90">
-              Identity verification is required before approval.
-            </p>
+
+            <div className="rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-fuchsia-50 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500 text-white">
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path d="M4 7h16M6 11h12M8 15h8" />
+                  </svg>
+                </div>
+                <span className="text-[11px] font-semibold text-purple-700">Backed by Hedera</span>
+              </div>
+              <p className="mt-1 text-[11px] text-purple-700/90">
+                Payment escrow and audit records are guaranteed on Hedera.
+              </p>
+            </div>
           </div>
 
-          <div className="rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path d="M4 7h16M6 11h12M8 15h8" />
-                </svg>
-              </div>
-              <span className="text-[11px] font-semibold text-emerald-700">Backed by Hedera</span>
-            </div>
-            <p className="mt-1 text-[11px] text-emerald-700/90">
-              Payment escrow and audit records are guaranteed on Hedera.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => onApprove(selectedSample)}
+            disabled={isPending}
+            className="w-full rounded-md bg-emerald-500 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {isPending
+              ? "Verifying..."
+              : `Confirm ${selectedSample.agentName} · $${(selectedBid?.quoteUsd ?? 0).toFixed(2)}`}
+          </button>
+
+          <button
+            type="button"
+            onClick={onEditRequirements}
+            className="mt-3 w-full rounded-md border border-zinc-300 bg-white py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            Edit requirements
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => onApprove(selectedSample)}
-          disabled={isPending}
-          className="w-full rounded-md bg-emerald-500 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {isPending
-            ? "Verifying..."
-            : `Confirm ${selectedSample.agentName} · $${(selectedBid?.quoteUsd ?? 0).toFixed(2)}`}
-        </button>
-
-        <button
-          type="button"
-          onClick={onEditRequirements}
-          className="mt-3 w-full rounded-md border border-zinc-300 bg-white py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-        >
-          Edit requirements
-        </button>
-      </div>
+      )}
     </div>
   );
 }

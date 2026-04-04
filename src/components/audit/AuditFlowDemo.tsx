@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { AgentConfirmPanel } from "@/components/audit/AgentConfirmPanel";
 import { AuditConversation } from "@/components/audit/AuditConversation";
+import { AgentGroupChatPanel } from "@/components/audit/AgentGroupChatPanel";
 import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
@@ -75,16 +76,29 @@ export function AuditFlowDemo() {
         {controller.showMiddlePanel && (
           <div className="hidden min-w-0 flex-1 md:block motion-safe:animate-sample-panel-pullout">
             <div className="h-full">
-              <AgentConfirmPanel
-                samples={controller.evaluatingState?.samples ?? []}
-                bids={controller.evaluatingState?.bids ?? []}
-                isPending={controller.isPending}
-                onApprove={controller.handleApprove}
-                selectedAgentId={controller.selectedAgentId}
-                onSelectAgent={controller.handleSelectSample}
-                onEditRequirements={controller.handleEditRequirements}
-                layout="main"
-              />
+              {controller.middlePanelMode === "groupChat" ? (
+                <AgentGroupChatPanel
+                  taskDescription={controller.session?.input.taskDescription ?? ""}
+                  bids={controller.biddingState?.visibleBids ?? []}
+                  shortlist={controller.biddingState?.shortlist}
+                  pendingQuestion={controller.session?.pendingQuestion}
+                  isAwaitingSelection={Boolean(controller.session?.pendingQuestion)}
+                  isSubmittingSelection={controller.isSubmitting}
+                  onSubmitSelection={controller.handleSubmitShortlist}
+                />
+              ) : (
+                <AgentConfirmPanel
+                  samples={controller.fileSamples}
+                  bids={controller.fileBids}
+                  isPending={controller.isPending}
+                  onApprove={controller.handleApprove}
+                  selectedAgentId={controller.selectedAgentId}
+                  onSelectAgent={controller.handleSelectSample}
+                  onEditRequirements={controller.handleEditRequirements}
+                  layout="main"
+                  readOnly={controller.stage === "delivered"}
+                />
+              )}
             </div>
           </div>
         )}
@@ -127,6 +141,9 @@ export function AuditFlowDemo() {
                 taskDescription={controller.session.input.taskDescription}
                 totalBudgetUsd={controller.session.input.budgetUsd}
                 usedBudgetUsd={controller.usedBudget}
+                files={controller.fileSamples}
+                selectedAgentId={controller.selectedAgentId}
+                onPreviewFile={controller.handleSelectSample}
               />
             ) : (
               <ExecutionFlowIdle />
