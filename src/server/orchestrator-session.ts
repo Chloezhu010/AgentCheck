@@ -16,6 +16,7 @@ export type SessionEntry = {
   trialAgentIds?: ImageAgentId[];
   selectedAgent?: SelectedAgent;
   pendingAskCallId?: string;
+  escrowLockedHbar?: number;
 };
 
 export const sessions = new Map<string, SessionEntry>();

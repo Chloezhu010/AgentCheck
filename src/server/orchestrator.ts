@@ -3,7 +3,6 @@ import { runAgentLoop, parseTrialAgentSelection } from "@/server/orchestrator-lo
 import { makeMsg, generateSessionId, sessions } from "@/server/orchestrator-session";
 import { setDeliveredState } from "@/server/orchestrator-state";
 import { escrowRelease } from "@/server/hedera/payment";
-import { usdToHbar } from "@/lib/fx";
 import type { Content } from "@google/genai";
 import type { AuditSession, IntentInput } from "@/types/audit";
 import type { SessionEntry } from "@/server/orchestrator-session";
@@ -123,12 +122,13 @@ export async function finalizeDelivery(
 
   const quoteUsd = entry.currentBids.find((bid) => bid.id === agentId)?.quoteUsd ?? 0;
 
-  // Release escrow payment on Hedera (escrow → operator as demo round-trip)
+  // Release exactly what was locked in escrow (not the full quote)
   const operatorAccountId = process.env.HEDERA_ACCOUNT_ID;
-  if (operatorAccountId && quoteUsd > 0) {
+  const lockedHbar = entry.escrowLockedHbar ?? 0;
+  if (operatorAccountId && lockedHbar > 0) {
     try {
-      const amountHbar = usdToHbar(quoteUsd);
-      await escrowRelease(sessionId, operatorAccountId, amountHbar);
+      await escrowRelease(sessionId, operatorAccountId, lockedHbar);
+      entry.escrowLockedHbar = 0;
     } catch (err) {
       console.error("Escrow release failed:", err);
       // Continue with delivery even if release fails — don't block the UI

@@ -225,6 +225,15 @@ async function processToolCalls(
         }
       }
 
+      // Track escrow lock amount when hbar_transfer targets the escrow account
+      if (name === "hbar_transfer") {
+        const toAccount = toolArgs.toAccountId as string | undefined;
+        const amount = toolArgs.amount as number | undefined;
+        if (toAccount && toAccount === process.env.HEDERA_ESCROW_ACCOUNT_ID && amount) {
+          entry.escrowLockedHbar = (entry.escrowLockedHbar ?? 0) + amount;
+        }
+      }
+
       if (name === "score_samples") {
         const samples = getStoredSamples(sessionId);
         if (samples.length > 0) {
