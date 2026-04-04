@@ -275,7 +275,7 @@ export function AuditFlowDemo() {
   }
 
   function handleApprove(sample: SampleEvaluation) {
-    if (stage !== "evaluating" || !sessionId) return;
+    if (!sessionId) return;
 
     setLocalMessages((prev) => [
       ...prev,
@@ -354,15 +354,30 @@ export function AuditFlowDemo() {
 
   const hasSession = !!session;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
-  const hasSamplesReady = stage === "evaluating" && !!evaluatingState && evaluatingState.samples.length > 0;
+  const latestScoredSamples = useMemo(() => {
+    if (!session?.messages?.length) return [] as SampleEvaluation[];
+
+    for (let i = session.messages.length - 1; i >= 0; i -= 1) {
+      const message = session.messages[i];
+      if (message.kind === "scoreCanvas" && message.samples && message.samples.length > 0) {
+        return message.samples;
+      }
+    }
+
+    return [] as SampleEvaluation[];
+  }, [session?.messages]);
+  const panelSamples = evaluatingState?.samples?.length
+    ? evaluatingState.samples
+    : latestScoredSamples;
+  const hasSamplesReady = panelSamples.length > 0;
   const showMiddlePanel = hasSamplesReady && isMdUp;
 
   useEffect(() => {
-    if (!evaluatingState || evaluatingState.samples.length === 0) return;
-    if (!selectedAgentId || !evaluatingState.samples.some((s) => s.agentId === selectedAgentId)) {
-      setSelectedAgentId(evaluatingState.samples[0].agentId);
+    if (panelSamples.length === 0) return;
+    if (!selectedAgentId || !panelSamples.some((s) => s.agentId === selectedAgentId)) {
+      setSelectedAgentId(panelSamples[0].agentId);
     }
-  }, [evaluatingState, selectedAgentId]);
+  }, [panelSamples, selectedAgentId]);
 
   useEffect(() => {
     if (!hasSamplesReady || hasPromptedSampleSelection) return;
@@ -484,7 +499,7 @@ export function AuditFlowDemo() {
           <div ref={samplePanelRef} className="hidden min-w-0 flex-1 md:block">
             <div className="h-full">
               <AgentConfirmPanel
-                samples={evaluatingState?.samples ?? []}
+                samples={panelSamples}
                 bids={evaluatingState?.bids ?? []}
                 isPending={isPending}
                 onApprove={handleApprove}
