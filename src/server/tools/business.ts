@@ -1,12 +1,14 @@
-import { fetchAllBids, fetchAllSamples } from "@/server/agent-client";
+import { fetchAllBids, fetchSamplesForAgents } from "@/server/agent-client";
 import { llmJudgeScore } from "@/server/judge";
 import { normalizeWeights } from "@/lib/audit-demo-data";
 import type { FunctionDeclaration } from "@google/genai";
 import type { IntentWeights, SampleEvaluation } from "@/types/audit";
+import type { ImageAgentId } from "@/types/agent";
 
 // Session-scoped sample store so the agent loop can reference them later.
 // Key: sessionId, Value: latest scored samples
 const sampleStore = new Map<string, SampleEvaluation[]>();
+const ALL_AGENT_IDS: ImageAgentId[] = ["agent-alpha", "agent-beta", "agent-gamma"];
 
 export function getStoredSamples(sessionId: string): SampleEvaluation[] {
   return sampleStore.get(sessionId) ?? [];
@@ -43,6 +45,15 @@ export const businessFunctionDeclarations: FunctionDeclaration[] = [
         taskDescription: {
           type: "string",
           description: "Task description to generate samples for.",
+        },
+        agentIds: {
+          type: "array",
+          description:
+            "Optional shortlist of agent IDs to request samples from. If omitted, request from all available agents.",
+          items: {
+            type: "string",
+            enum: ALL_AGENT_IDS,
+          },
         },
       },
       required: ["taskDescription"],
@@ -103,11 +114,14 @@ export async function executeBusinessTool(
     }
     case "request_samples": {
       const taskDescription = args.taskDescription as string;
-      const samples = await fetchAllSamples(taskDescription);
+      const requestedAgentIds = normalizeAgentIds(args.agentIds);
+      const agentIds = requestedAgentIds.length > 0 ? requestedAgentIds : ALL_AGENT_IDS;
+      const samples = await fetchSamplesForAgents(taskDescription, agentIds);
       sampleStore.set(sessionId, samples);
       // Return metadata only — images are stored in sampleStore
       return {
         sampleCount: samples.length,
+        requestedAgentIds: agentIds,
         samples: samples.map((s) => ({
           agentId: s.agentId,
           agentName: s.agentName,
@@ -139,4 +153,16 @@ export async function executeBusinessTool(
     default:
       return { error: `Unknown business tool: ${name}` };
   }
+}
+
+function normalizeAgentIds(input: unknown): ImageAgentId[] {
+  if (!Array.isArray(input)) return [];
+
+  const picked = input.flatMap((item) =>
+    item === "agent-alpha" || item === "agent-beta" || item === "agent-gamma"
+      ? [item]
+      : [],
+  );
+
+  return Array.from(new Set(picked));
 }

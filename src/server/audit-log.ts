@@ -5,7 +5,11 @@ import type { AuditEventType } from "@/types/hedera";
 const TOPIC_ID = process.env.HEDERA_AUDIT_TOPIC_ID ?? "";
 
 function hashscanTopicMessageUrl(seqNum: string): string {
-  return `https://hashscan.io/testnet/topic/${TOPIC_ID}/message/${seqNum}`;
+  if (!TOPIC_ID) {
+    return "";
+  }
+
+  return `https://hashscan.io/testnet/topic/${encodeURIComponent(TOPIC_ID)}?p=1&k=${encodeURIComponent(seqNum)}`;
 }
 
 export async function recordAuditEvent(
