@@ -67,7 +67,7 @@ export type IntentInput = {
 };
 
 export type AuditSessionState =
-  | { stage: "agentic"; pendingQuestion?: { question: string; options?: string[] } }
+  | { stage: "agentic" }
   | { stage: "bidding"; visibleBids: AgentBid[]; countdownSeconds: number }
   | { stage: "evaluating"; bids: AgentBid[]; samples: SampleEvaluation[] }
   | {
@@ -84,6 +84,7 @@ export type AuditSession = {
   id: string;
   input: IntentInput;
   state: AuditSessionState;
+  pendingQuestion?: { question: string; options?: string[] };
   messages: OrchestratorMessage[];
   auditTrail: AuditEvent[];
   createdAt: number;

@@ -1,4 +1,5 @@
 import { getGeminiClient } from "@/server/agents/gemini-client";
+import { getPersona } from "@/server/agents/personas";
 import { allFunctionDeclarations, executeTool } from "@/server/tools";
 import { getStoredSamples } from "@/server/tools/business";
 import { buildDeliveryReport } from "@/lib/audit-demo-data";
@@ -12,6 +13,9 @@ import type {
 } from "@/types/audit";
 
 const MAX_AGENT_STEPS = 25;
+const AGENT_STEP_TIMEOUT_MS = readTimeoutMs("AGENT_STEP_TIMEOUT_MS", 20_000);
+const TOOL_TIMEOUT_MS = readTimeoutMs("AGENT_TOOL_TIMEOUT_MS", 20_000);
+const LOOP_TIMEOUT_MS = readTimeoutMs("AGENT_LOOP_TIMEOUT_MS", 90_000);
 
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are AgentCheck's orchestrator — an autonomous AI procurement agent.
 You manage the full lifecycle of hiring an AI agent for a user's task: from broadcasting an RFQ, to evaluating bids, running trials, scoring samples, and handling payment via Hedera.
@@ -85,6 +89,7 @@ export function createSession(input: IntentInput): AuditSession {
     id,
     input,
     state: { stage: "agentic" },
+    pendingQuestion: undefined,
     messages: [
       makeMsg(
         `Task received. Starting autonomous procurement for: "${input.taskDescription}" with budget $${input.budgetUsd.toFixed(2)}.`,
@@ -145,12 +150,12 @@ export function respondToAgent(
   const entry = sessions.get(sessionId);
   if (!entry) return { error: "Session not found" };
 
-  if (entry.session.state.stage !== "agentic") {
-    return { error: `Cannot respond in stage: ${entry.session.state.stage}` };
+  if (!entry.session.pendingQuestion) {
+    return { error: "No pending question to respond to" };
   }
 
-  // Clear pending question
-  entry.session.state = { stage: "agentic" };
+  // Clear pending question while keeping workflow stage untouched.
+  entry.session.pendingQuestion = undefined;
 
   // Respond as a functionResponse for the pending ask_user call so the
   // model sees one clean turn instead of a placeholder + separate user text.
@@ -201,20 +206,30 @@ async function runAgentLoop(sessionId: string): Promise<void> {
   if (entry.loopRunning) return;
 
   entry.loopRunning = true;
-  const client = getGeminiClient();
+  const startedAt = Date.now();
 
   try {
+    const client = getGeminiClient();
+
     for (let step = 0; step < MAX_AGENT_STEPS; step++) {
-      const response = await client.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: entry.agentHistory,
-        config: {
-          systemInstruction: ORCHESTRATOR_SYSTEM_PROMPT,
-          tools: [{ functionDeclarations: allFunctionDeclarations }],
-          temperature: 0.3,
-          maxOutputTokens: 2048,
-        },
-      });
+      if (Date.now() - startedAt > LOOP_TIMEOUT_MS) {
+        throw new Error(`Agent loop timeout after ${LOOP_TIMEOUT_MS}ms`);
+      }
+
+      const response = await withTimeout(
+        client.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: entry.agentHistory,
+          config: {
+            systemInstruction: ORCHESTRATOR_SYSTEM_PROMPT,
+            tools: [{ functionDeclarations: allFunctionDeclarations }],
+            temperature: 0.3,
+            maxOutputTokens: 2048,
+          },
+        }),
+        AGENT_STEP_TIMEOUT_MS,
+        "Agent reasoning",
+      );
 
       const candidate = response.candidates?.[0];
       if (!candidate?.content) break;
@@ -230,6 +245,7 @@ async function runAgentLoop(sessionId: string): Promise<void> {
           sessionId,
           entry,
           functionCalls,
+          startedAt,
         );
         if (shouldPause) break;
         // Continue loop — the function results are in history, get next response
@@ -247,6 +263,8 @@ async function runAgentLoop(sessionId: string): Promise<void> {
       // (it's either done or waiting for something)
       break;
     }
+  } catch (err) {
+    applyDemoFallback(entry, err);
   } finally {
     entry.loopRunning = false;
   }
@@ -257,10 +275,16 @@ async function processToolCalls(
   sessionId: string,
   entry: SessionEntry,
   calls: FunctionCall[],
+  startedAt: number,
 ): Promise<boolean> {
   let shouldPause = false;
 
   for (const call of calls) {
+    if (Date.now() - startedAt > LOOP_TIMEOUT_MS) {
+      applyDemoFallback(entry, new Error(`Agent loop timeout after ${LOOP_TIMEOUT_MS}ms`));
+      return true;
+    }
+
     const name = call.name ?? "";
     const args = (call.args ?? {}) as Record<string, unknown>;
 
@@ -281,10 +305,7 @@ async function processToolCalls(
       entry.session.messages.push(
         makeMsg(question, "text", { options }),
       );
-      entry.session.state = {
-        stage: "agentic",
-        pendingQuestion: { question, options },
-      };
+      entry.session.pendingQuestion = { question, options };
       entry.pendingAskCallId = call.id;
       entry.session.updatedAt = Date.now();
 
@@ -295,10 +316,20 @@ async function processToolCalls(
     // Execute the tool
     let result: unknown;
     try {
-      result = await executeTool(name, args, sessionId);
+      result = await withTimeout(
+        executeTool(name, args, sessionId),
+        TOOL_TIMEOUT_MS,
+        `Tool ${name}`,
+      );
 
       if (name === "broadcast_rfq") {
         entry.currentBids = coerceBidsFromToolResult(result);
+        entry.session.state = {
+          stage: "bidding",
+          visibleBids: entry.currentBids,
+          countdownSeconds: 0,
+        };
+        entry.session.updatedAt = Date.now();
       }
 
       // Track audit events from HCS submissions
@@ -330,10 +361,25 @@ async function processToolCalls(
           entry.session.messages.push(
             makeMsg("", "scoreCanvas", { samples }),
           );
+          entry.session.state = {
+            stage: "evaluating",
+            bids: entry.currentBids,
+            samples,
+          };
+          entry.session.updatedAt = Date.now();
+        } else {
+          applyDemoFallback(entry, new Error("No scored samples available"));
+          shouldPause = true;
+          break;
         }
       }
     } catch (err) {
       result = { error: err instanceof Error ? err.message : "Tool execution failed" };
+      if (shouldFallbackOnToolFailure(name)) {
+        applyDemoFallback(entry, err);
+        shouldPause = true;
+        break;
+      }
     }
 
     // Add function response to history
@@ -352,6 +398,117 @@ async function processToolCalls(
   }
 
   return shouldPause;
+}
+
+function shouldFallbackOnToolFailure(toolName: string): boolean {
+  return toolName === "broadcast_rfq" || toolName === "request_samples" || toolName === "score_samples";
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise
+      .then((value) => resolve(value))
+      .catch((error) => reject(error))
+      .finally(() => clearTimeout(timeoutId));
+  });
+}
+
+function applyDemoFallback(entry: SessionEntry, reason: unknown): void {
+  if (entry.session.state.stage === "delivered") return;
+  if (
+    entry.session.state.stage === "evaluating" &&
+    entry.session.state.samples.some((sample) => sample.id.startsWith("fallback-"))
+  ) {
+    return;
+  }
+
+  const bids = buildFallbackBids();
+  const samples = buildFallbackSamples(entry.session.input.taskDescription, bids);
+  const reasonText = reason instanceof Error ? reason.message : "unknown fallback reason";
+
+  entry.currentBids = bids;
+  entry.session.messages.push(
+    makeMsg(
+      `Live agent orchestration timed out (${reasonText}). Switched to demo fallback so you can continue the flow without blocking.`,
+    ),
+  );
+  entry.session.messages.push(makeMsg("", "scoreCanvas", { samples }));
+  entry.session.state = {
+    stage: "evaluating",
+    bids,
+    samples,
+  };
+  entry.session.pendingQuestion = undefined;
+  entry.pendingAskCallId = undefined;
+  entry.session.updatedAt = Date.now();
+}
+
+function buildFallbackBids(): AgentBid[] {
+  const profiles: Array<{ id: AgentBid["id"]; quoteUsd: number; trialQuoteUsd: number; etaMinutes: number; reputation: number }> = [
+    { id: "agent-beta", trialQuoteUsd: 4.1, quoteUsd: 22, etaMinutes: 60, reputation: 0.91 },
+    { id: "agent-alpha", trialQuoteUsd: 3.2, quoteUsd: 18, etaMinutes: 45, reputation: 0.85 },
+    { id: "agent-gamma", trialQuoteUsd: 2.6, quoteUsd: 14, etaMinutes: 90, reputation: 0.78 },
+  ];
+
+  return profiles.map((profile) => {
+    const persona = getPersona(profile.id);
+    return {
+      id: profile.id,
+      agentName: persona?.name ?? profile.id,
+      model: persona?.style ?? "Unknown style",
+      verified: true,
+      trialQuoteUsd: profile.trialQuoteUsd,
+      quoteUsd: profile.quoteUsd,
+      etaMinutes: profile.etaMinutes,
+      reputation: profile.reputation,
+    };
+  });
+}
+
+function buildFallbackSamples(
+  taskDescription: string,
+  bids: AgentBid[],
+): Array<{
+  id: string;
+  agentId: string;
+  agentName: string;
+  model: string;
+  score: number;
+  recommendation: string;
+  sampleTitle: string;
+  summary: string;
+}> {
+  const scoreMap: Record<string, number> = {
+    "agent-beta": 0.91,
+    "agent-alpha": 0.86,
+    "agent-gamma": 0.79,
+  };
+
+  return bids
+    .map((bid) => ({
+      id: `fallback-${bid.id}`,
+      agentId: bid.id,
+      agentName: bid.agentName,
+      model: bid.model,
+      score: scoreMap[bid.id] ?? 0.75,
+      recommendation:
+        bid.id === "agent-beta"
+          ? "Best overall balance of quality and delivery confidence for the requested output."
+          : bid.id === "agent-alpha"
+            ? "Strong visual quality and fast turnaround, with slightly higher execution variance."
+            : "Cost-efficient option with simpler style output and slower turnaround.",
+      sampleTitle: `${bid.agentName} Fallback Sample`,
+      summary: `Fallback preview generated for demo continuity. Task focus: ${taskDescription.slice(0, 140)}.`,
+    }))
+    .sort((a, b) => b.score - a.score);
 }
 
 // Check if the agent has selected and approved a final agent — transition to delivered
@@ -501,6 +658,8 @@ function setDeliveredState(
     delivery: buildDeliveryReport(agentName, entry.session.input.taskDescription),
     auditEvents: entry.session.auditTrail,
   };
+  entry.session.pendingQuestion = undefined;
+  entry.pendingAskCallId = undefined;
   entry.session.updatedAt = Date.now();
 }
 
@@ -547,4 +706,12 @@ function readString(record: Record<string, unknown> | null, key: string): string
 function readNumber(record: Record<string, unknown> | null, key: string): number | undefined {
   const value = record?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readTimeoutMs(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || raw < 1_000) {
+    return fallback;
+  }
+  return raw;
 }

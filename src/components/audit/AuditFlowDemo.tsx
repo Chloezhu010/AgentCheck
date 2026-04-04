@@ -59,8 +59,7 @@ export function AuditFlowDemo() {
   const prevMsgCount = useRef(0);
 
   const stage = session?.state.stage ?? null;
-  const hasPendingQuestion =
-    session?.state.stage === "agentic" && !!session.state.pendingQuestion;
+  const hasPendingQuestion = !!session?.pendingQuestion;
   const isAgentWorking = stage === "agentic" && !hasPendingQuestion;
   const isFlowRunning = stage === "bidding" || stage === "evaluating" || isAgentWorking;
 
@@ -275,7 +274,7 @@ export function AuditFlowDemo() {
   }
 
   function handleApprove(sample: SampleEvaluation) {
-    if (!sessionId) return;
+    if (stage !== "evaluating" || !sessionId) return;
 
     setLocalMessages((prev) => [
       ...prev,
@@ -354,30 +353,15 @@ export function AuditFlowDemo() {
 
   const hasSession = !!session;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
-  const latestScoredSamples = useMemo(() => {
-    if (!session?.messages?.length) return [] as SampleEvaluation[];
-
-    for (let i = session.messages.length - 1; i >= 0; i -= 1) {
-      const message = session.messages[i];
-      if (message.kind === "scoreCanvas" && message.samples && message.samples.length > 0) {
-        return message.samples;
-      }
-    }
-
-    return [] as SampleEvaluation[];
-  }, [session?.messages]);
-  const panelSamples = evaluatingState?.samples?.length
-    ? evaluatingState.samples
-    : latestScoredSamples;
-  const hasSamplesReady = panelSamples.length > 0;
+  const hasSamplesReady = !!evaluatingState && evaluatingState.samples.length > 0;
   const showMiddlePanel = hasSamplesReady && isMdUp;
 
   useEffect(() => {
-    if (panelSamples.length === 0) return;
-    if (!selectedAgentId || !panelSamples.some((s) => s.agentId === selectedAgentId)) {
-      setSelectedAgentId(panelSamples[0].agentId);
+    if (!evaluatingState || evaluatingState.samples.length === 0) return;
+    if (!selectedAgentId || !evaluatingState.samples.some((s) => s.agentId === selectedAgentId)) {
+      setSelectedAgentId(evaluatingState.samples[0].agentId);
     }
-  }, [panelSamples, selectedAgentId]);
+  }, [evaluatingState, selectedAgentId]);
 
   useEffect(() => {
     if (!hasSamplesReady || hasPromptedSampleSelection) return;
@@ -461,9 +445,6 @@ export function AuditFlowDemo() {
                     <BackendMessage
                       key={`backend-group-${grouped[0]?.id ?? i}`}
                       messages={grouped}
-                      canApprove={stage === "evaluating"}
-                      isPending={isPending}
-                      onApprove={handleApprove}
                     />,
                   );
                 }
@@ -499,7 +480,7 @@ export function AuditFlowDemo() {
           <div ref={samplePanelRef} className="hidden min-w-0 flex-1 md:block">
             <div className="h-full">
               <AgentConfirmPanel
-                samples={panelSamples}
+                samples={evaluatingState?.samples ?? []}
                 bids={evaluatingState?.bids ?? []}
                 isPending={isPending}
                 onApprove={handleApprove}

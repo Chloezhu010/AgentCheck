@@ -1,12 +1,9 @@
-import type { OrchestratorMessage, SampleEvaluation } from "@/types/audit";
+import type { OrchestratorMessage } from "@/types/audit";
 
 type UserMessageProps = { id: string; text: string };
 type AssistantMessageProps = { id: string; text: string };
 type BackendMessageProps = {
   messages: OrchestratorMessage[];
-  canApprove: boolean;
-  isPending: boolean;
-  onApprove: (sample: SampleEvaluation) => void;
 };
 
 function boldify(text: string): string {
@@ -44,9 +41,6 @@ export function AssistantMessage({ id, text }: AssistantMessageProps) {
 
 export function BackendMessage({
   messages,
-  canApprove,
-  isPending,
-  onApprove,
 }: BackendMessageProps) {
   if (messages.length === 0) return null;
 
@@ -128,10 +122,10 @@ export function OrchestratorLabel() {
 export function TypingIndicator() {
   return (
     <div className="animate-in fade-in duration-200">
-      <p className="font-mono text-xs text-zinc-400">
+          <p className="font-mono text-xs text-zinc-400">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-          // PROCESSING...
+          {"// PROCESSING..."}
         </span>
       </p>
     </div>
