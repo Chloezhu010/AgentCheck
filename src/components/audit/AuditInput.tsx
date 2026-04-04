@@ -33,7 +33,10 @@ export function AuditInput({
             type="text"
             value={taskDescription}
             onChange={(e) => onTaskChange(e.target.value)}
-            placeholder={placeholder ?? (disabled ? "Auction in progress..." : "Describe what you want built...")}
+            placeholder={
+              placeholder ??
+              (disabled ? "Auction in progress..." : "Describe what you want to create...")
+            }
             disabled={disabled || isSubmitting}
             className="flex-1 bg-transparent font-mono text-xs text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50"
           />
