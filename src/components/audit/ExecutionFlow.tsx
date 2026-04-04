@@ -36,9 +36,22 @@ function stepsForStage(stage: AuditSessionState["stage"]): Step[] {
 type ExecutionFlowProps = {
   state: AuditSessionState;
   countdownSeconds: number;
+  taskDescription: string;
+  totalBudgetUsd: number;
+  usedBudgetUsd: number;
 };
 
-export function ExecutionFlow({ state, countdownSeconds }: ExecutionFlowProps) {
+function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
+export function ExecutionFlow({
+  state,
+  countdownSeconds,
+  taskDescription,
+  totalBudgetUsd,
+  usedBudgetUsd,
+}: ExecutionFlowProps) {
   const steps = stepsForStage(state.stage);
   const bids: AgentBid[] =
     state.stage === "bidding"
@@ -50,8 +63,34 @@ export function ExecutionFlow({ state, countdownSeconds }: ExecutionFlowProps) {
   const samples: SampleEvaluation[] =
     state.stage === "evaluating" ? state.samples : [];
 
+  const remainingBudgetUsd = Math.max(totalBudgetUsd - usedBudgetUsd, 0);
+
   return (
     <div className="flex h-full flex-col overflow-y-auto border-l border-zinc-100 bg-zinc-50 px-5 py-6 font-mono text-xs">
+      <div className="sticky top-0 z-10 -mx-5 -mt-7 mb-12 border-b border-zinc-200 bg-zinc-50/95 px-5 pt-0 pb-7 backdrop-blur">
+        <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
+          <p className="mb-1 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
+            Task_Brief
+          </p>
+          <p className="line-clamp-3 leading-relaxed text-zinc-700">
+            {taskDescription}
+          </p>
+
+          <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-[10px] text-zinc-500">
+            <div className="flex items-center justify-between">
+              <span>TOTAL / REMAINING</span>
+              <span className="font-semibold text-zinc-700">
+                {formatUsd(totalBudgetUsd)} / {formatUsd(remainingBudgetUsd)}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center justify-between">
+              <span>USED</span>
+              <span className="font-semibold text-zinc-700">{formatUsd(usedBudgetUsd)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Steps */}
       <div className="mb-6">
         <p className="mb-3 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">

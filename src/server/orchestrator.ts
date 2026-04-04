@@ -15,7 +15,7 @@ import type {
 const MAX_AGENT_STEPS = 25;
 const AGENT_STEP_TIMEOUT_MS = readTimeoutMs("AGENT_STEP_TIMEOUT_MS", 20_000);
 const TOOL_TIMEOUT_MS = readTimeoutMs("AGENT_TOOL_TIMEOUT_MS", 20_000);
-const LOOP_TIMEOUT_MS = readTimeoutMs("AGENT_LOOP_TIMEOUT_MS", 90_000);
+const LOOP_TIMEOUT_MS = readTimeoutMs("AGENT_LOOP_TIMEOUT_MS", 120_000);
 
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are AgentCheck's orchestrator — an autonomous AI procurement agent.
 You manage the full lifecycle of hiring an AI agent for a user's task: from broadcasting an RFQ, to evaluating bids, running trials, scoring samples, and handling payment via Hedera.
