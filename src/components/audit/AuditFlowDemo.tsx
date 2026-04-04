@@ -5,8 +5,8 @@ import { normalizeWeights } from "@/lib/audit-demo-data";
 import type {
   AuditSession,
   AuditSessionState,
-  ChatMessage,
   IntentWeights,
+  OrchestratorMessage,
   SampleEvaluation,
 } from "@/types/audit";
 
@@ -36,27 +36,9 @@ const weightControls: Array<{ key: keyof IntentWeights; label: string }> = [
   { key: "speed", label: "Speed" },
 ];
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: "welcome",
-    role: "assistant",
-    kind: "text",
-    text: "Hi! I'm AgentCheck. Describe a task and I'll run the full auction, scoring, and audit pipeline for you.",
-  },
-];
-
-function msgId() {
-  return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function msg(
-  role: ChatMessage["role"],
-  kind: ChatMessage["kind"],
-  text: string,
-  samples?: SampleEvaluation[],
-): ChatMessage {
-  return { id: msgId(), role, kind, text, samples };
-}
+type DisplayMessage =
+  | { source: "user"; id: string; text: string }
+  | { source: "backend"; msg: OrchestratorMessage };
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -70,16 +52,13 @@ export function AuditFlowDemo() {
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<AuditSession | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialMessages);
-  const [isTyping, setIsTyping] = useState(false);
+  const [userMessages, setUserMessages] = useState<Array<{ id: string; text: string; ts: number }>>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, startSubmit] = useTransition();
   const [isPending, startApprove] = useTransition();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  // Track what the client has already rendered to avoid duplicate messages
-  const seenBidIds = useRef<Set<string>>(new Set());
-  const seenStage = useRef<AuditSessionState["stage"] | null>(null);
+  const prevMsgCount = useRef(0);
 
   const stage = session?.state.stage ?? null;
   const activeStepIndex = stage ? stageToStepIndex[stage] : 0;
@@ -107,70 +86,44 @@ export function AuditFlowDemo() {
     [normalizedWeights],
   );
 
+  // Merge user messages + backend messages chronologically
+  const displayMessages: DisplayMessage[] = useMemo(() => {
+    const backendMsgs: DisplayMessage[] = (session?.messages ?? []).map((msg) => ({
+      source: "backend" as const,
+      msg,
+    }));
+    const userMsgs: DisplayMessage[] = userMessages.map((u) => ({
+      source: "user" as const,
+      id: u.id,
+      text: u.text,
+    }));
+
+    // Interleave: user messages appear before backend messages that arrived after them
+    const all: Array<DisplayMessage & { ts: number }> = [
+      ...backendMsgs.map((d) => ({ ...d, ts: d.source === "backend" ? d.msg.ts : 0 })),
+      ...userMsgs.map((d, i) => ({ ...d, ts: userMessages[i].ts })),
+    ];
+    all.sort((a, b) => a.ts - b.ts);
+    return all;
+  }, [session?.messages, userMessages]);
+
+  // Show typing indicator when new backend messages might be arriving
+  const isTyping =
+    isFlowRunning &&
+    session?.messages &&
+    session.messages.length === prevMsgCount.current;
+
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages, isTyping]);
+  }, [displayMessages.length]);
 
-  // Derive chat messages from session state changes
-  function handleSessionUpdate(next: AuditSession) {
-    setSession(next);
+  // Track message count for typing indicator
+  useEffect(() => {
+    prevMsgCount.current = session?.messages?.length ?? 0;
+  }, [session?.messages?.length]);
 
-    const prevStage = seenStage.current;
-    const nextStage = next.state.stage;
-
-    // Stage transitions
-    if (prevStage !== nextStage) {
-      seenStage.current = nextStage;
-
-      if (nextStage === "evaluating") {
-        setIsTyping(true);
-        setTimeout(() => {
-          setIsTyping(false);
-          const evaluatingState = next.state as Extract<AuditSessionState, { stage: "evaluating" }>;
-          setChatMessages((prev) => [
-            ...prev,
-            msg("assistant", "text", "Auction closed. Scoring top samples with LLM Judge..."),
-            msg("assistant", "scoreCanvas", "", evaluatingState.samples),
-          ]);
-        }, 600);
-      }
-
-      if (nextStage === "delivered") {
-        const deliveredState = next.state as Extract<AuditSessionState, { stage: "delivered" }>;
-        setChatMessages((prev) => [
-          ...prev,
-          msg("assistant", "text", `Approved! Executing **${deliveredState.approvedAgentName}**...`),
-          msg("assistant", "text", `Task delivered. **${formatUsd(deliveredState.quoteUsd)}** released from escrow.`),
-          msg("assistant", "text", `Audit complete. Spent **${formatUsd(deliveredState.quoteUsd)}** of **${formatUsd(next.input.budgetUsd)}** budget.`),
-        ]);
-      }
-    }
-
-    // New bids arriving during bidding
-    if (nextStage === "bidding") {
-      const biddingState = next.state as Extract<AuditSessionState, { stage: "bidding" }>;
-      for (const bid of biddingState.visibleBids) {
-        if (!seenBidIds.current.has(bid.id)) {
-          seenBidIds.current.add(bid.id);
-          setIsTyping(true);
-          setTimeout(() => {
-            setIsTyping(false);
-            setChatMessages((prev) => [
-              ...prev,
-              msg(
-                "assistant",
-                "text",
-                `Received bid from **${bid.agentName}** (${bid.model}) — trial ${formatUsd(bid.trialQuoteUsd)} · full job ${formatUsd(bid.quoteUsd)}, ETA ${bid.etaMinutes}min, rep ${bid.reputation.toFixed(2)}`,
-              ),
-            ]);
-          }, 400);
-        }
-      }
-    }
-  }
-
-  // Polling — runs while a session is active and not yet delivered/errored
+  // Polling
   useEffect(() => {
     if (!sessionId || stage === "delivered" || stage === "error") return;
 
@@ -179,7 +132,7 @@ export function AuditFlowDemo() {
         const res = await fetch(`/api/audit/session/${sessionId}`);
         if (!res.ok) return;
         const data = (await res.json()) as { session: AuditSession };
-        handleSessionUpdate(data.session);
+        setSession(data.session);
       } catch {
         // silently ignore transient fetch errors
       }
@@ -193,15 +146,13 @@ export function AuditFlowDemo() {
     if (!taskDescription.trim()) return;
 
     setSubmitError(null);
-    seenBidIds.current = new Set();
-    seenStage.current = null;
 
     const userTask = taskDescription;
     setTaskDescription("");
 
-    setChatMessages((prev) => [
+    setUserMessages((prev) => [
       ...prev,
-      msg("user", "text", userTask),
+      { id: `user-${Date.now()}`, text: userTask, ts: Date.now() },
     ]);
 
     startSubmit(async () => {
@@ -219,10 +170,6 @@ export function AuditFlowDemo() {
 
       if (!res.ok) {
         setSubmitError(data.error ?? "Failed to start auction");
-        setChatMessages((prev) => [
-          ...prev,
-          msg("assistant", "text", data.error ?? "Failed to start auction"),
-        ]);
         return;
       }
 
@@ -233,18 +180,6 @@ export function AuditFlowDemo() {
 
       setSessionId(newId);
       setSession(newSession);
-      seenStage.current = "bidding";
-
-      setChatMessages((prev) => [
-        ...prev,
-        msg("assistant", "text", `Got it. Budget set to **${formatUsd(totalBudget)}**.`),
-        msg(
-          "assistant",
-          "text",
-          `Opening RFQ for 15s — weights: quality ${weightPercentages.quality}%, price ${weightPercentages.price}%, speed ${weightPercentages.speed}%.`,
-        ),
-        msg("assistant", "text", "Waiting for agent bids..."),
-      ]);
     });
   }
 
@@ -256,9 +191,9 @@ export function AuditFlowDemo() {
   function handleApprove(sample: SampleEvaluation) {
     if (stage !== "evaluating" || !sessionId) return;
 
-    setChatMessages((prev) => [
+    setUserMessages((prev) => [
       ...prev,
-      msg("user", "text", `Approve ${sample.agentName}`),
+      { id: `user-${Date.now()}`, text: `Approve ${sample.agentName}`, ts: Date.now() },
     ]);
 
     startApprove(async () => {
@@ -271,19 +206,20 @@ export function AuditFlowDemo() {
       const data = await res.json();
       if (!res.ok) return;
 
-      handleSessionUpdate((data as { session: AuditSession }).session);
+      setSession((data as { session: AuditSession }).session);
     });
   }
 
   function handleReset() {
     setSessionId(null);
     setSession(null);
-    setChatMessages(initialMessages);
-    setIsTyping(false);
+    setUserMessages([]);
     setSubmitError(null);
-    seenBidIds.current = new Set();
-    seenStage.current = null;
+    prevMsgCount.current = 0;
   }
+
+  // Audit trail panel (shown in delivered stage)
+  const auditTrail = session?.auditTrail ?? [];
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -351,78 +287,142 @@ export function AuditFlowDemo() {
       {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
         <div className="mx-auto max-w-2xl space-y-3">
-          {chatMessages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${
-                message.role === "user" ? "justify-end" : "justify-start"
-              } animate-in fade-in slide-in-from-bottom-2 duration-300`}
-            >
-              {message.role === "assistant" && (
+          {/* Welcome message (always shown) */}
+          {!sessionId && (
+            <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="mr-2 mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-bold text-white">
+                A
+              </div>
+              <div className="max-w-[85%] rounded-2xl bg-zinc-100 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-800">
+                <p>Hi! I&apos;m AgentCheck. Describe a task and I&apos;ll run the full auction, scoring, and audit pipeline for you.</p>
+              </div>
+            </div>
+          )}
+
+          {displayMessages.map((dm) => {
+            if (dm.source === "user") {
+              return (
+                <div
+                  key={dm.id}
+                  className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300"
+                >
+                  <div className="max-w-[85%] rounded-2xl bg-zinc-900 px-3.5 py-2.5 text-sm leading-relaxed text-white">
+                    <p>{dm.text}</p>
+                  </div>
+                </div>
+              );
+            }
+
+            const message = dm.msg;
+            return (
+              <div
+                key={message.id}
+                className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300"
+              >
                 <div className="mr-2 mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-bold text-white">
                   A
                 </div>
-              )}
-              <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                  message.role === "user"
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-100 text-zinc-800"
-                }`}
-              >
-                {message.text && (
-                  <p
-                    className="whitespace-pre-wrap [&>strong]:font-semibold"
-                    dangerouslySetInnerHTML={{
-                      __html: message.text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"),
-                    }}
-                  />
-                )}
+                <div className="max-w-[85%] rounded-2xl bg-zinc-100 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-800">
+                  {message.text && (
+                    <p
+                      className="whitespace-pre-wrap [&>strong]:font-semibold"
+                      dangerouslySetInnerHTML={{
+                        __html: message.text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"),
+                      }}
+                    />
+                  )}
 
-                {message.kind === "scoreCanvas" && message.samples ? (
-                  <div className="mt-2 space-y-2">
-                    {message.samples.map((sample) => {
-                      const scorePercent = Math.round(sample.score * 100);
-                      return (
-                        <section
-                          key={sample.id}
-                          className="rounded-xl border border-zinc-200 bg-white p-3"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-zinc-900">
-                                {sample.agentName}
-                              </p>
-                              <p className="text-[11px] text-zinc-400">{sample.model}</p>
-                            </div>
-                            <p className="font-mono text-xs text-zinc-500">{scorePercent}/100</p>
-                          </div>
-
-                          <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-200">
-                            <div
-                              style={{ width: `${scorePercent}%` }}
-                              className="h-1.5 rounded-full bg-emerald-500 transition-all duration-700"
-                            />
-                          </div>
-
-                          <p className="mt-2 text-xs text-zinc-600">{sample.recommendation}</p>
-
-                          <button
-                            type="button"
-                            onClick={() => handleApprove(sample)}
-                            disabled={stage !== "evaluating" || isPending}
-                            className="mt-2.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  {message.kind === "scoreCanvas" && message.samples && message.samples.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {message.samples.map((sample) => {
+                        const scorePercent = Math.round(sample.score * 100);
+                        return (
+                          <section
+                            key={sample.id}
+                            className="rounded-xl border border-zinc-200 bg-white p-3"
                           >
-                            {isPending ? "Approving..." : `Approve ${sample.agentName}`}
-                          </button>
-                        </section>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-zinc-900">
+                                  {sample.agentName}
+                                </p>
+                                <p className="text-[11px] text-zinc-400">{sample.model}</p>
+                              </div>
+                              {scorePercent > 0 && (
+                                <p className="font-mono text-xs text-zinc-500">{scorePercent}/100</p>
+                              )}
+                            </div>
+
+                            {scorePercent > 0 && (
+                              <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-200">
+                                <div
+                                  style={{ width: `${scorePercent}%` }}
+                                  className="h-1.5 rounded-full bg-emerald-500 transition-all duration-700"
+                                />
+                              </div>
+                            )}
+
+                            {sample.imageDataUrl && (
+                              <img
+                                src={sample.imageDataUrl}
+                                alt={`${sample.agentName} sample`}
+                                className="mt-2 w-full rounded-lg border border-zinc-100"
+                              />
+                            )}
+
+                            <p className="mt-2 text-xs text-zinc-600">{sample.recommendation}</p>
+
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(sample)}
+                              disabled={stage !== "evaluating" || isPending}
+                              className="mt-2.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {isPending ? "Approving..." : `Approve ${sample.agentName}`}
+                            </button>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Audit trail (shown in delivered stage) */}
+          {stage === "delivered" && auditTrail.length > 0 && (
+            <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="mr-2 mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-bold text-white">
+                A
+              </div>
+              <div className="max-w-[85%] rounded-2xl bg-zinc-100 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-800">
+                <p className="mb-2 font-semibold">Hedera HCS Audit Trail</p>
+                <ul className="space-y-1">
+                  {auditTrail.map((event) => (
+                    <li key={event.id} className="flex items-center gap-2 text-xs">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          event.status === "logged" ? "bg-emerald-500" : "bg-amber-400"
+                        }`}
+                      />
+                      <span className="text-zinc-600">{event.label}</span>
+                      {event.txUrl && (
+                        <a
+                          href={event.txUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 underline"
+                        >
+                          hashscan
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
-          ))}
+          )}
 
           {isTyping && (
             <div className="flex items-start">

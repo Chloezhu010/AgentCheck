@@ -23,7 +23,7 @@ export async function POST(
     );
   }
 
-  const result = approveAgent(id, parsed.data.agentId);
+  const result = await approveAgent(id, parsed.data.agentId);
   if ("error" in result) {
     return Response.json({ error: result.error } satisfies ApiError, { status: 400 });
   }
