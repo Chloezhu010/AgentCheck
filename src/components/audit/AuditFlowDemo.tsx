@@ -39,6 +39,7 @@ type DisplayMessage = LocalMessage | { source: "backend"; msg: OrchestratorMessa
 
 export function AuditFlowDemo() {
   const [taskDescription, setTaskDescription] = useState("");
+  const [lastSubmittedTask, setLastSubmittedTask] = useState("");
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<AuditSession | null>(null);
@@ -48,14 +49,14 @@ export function AuditFlowDemo() {
   const [isPending, startApprove] = useTransition();
   const [devMode, setDevMode] = useState(false);
   const [isFlowOpen, setIsFlowOpen] = useState(true);
-  const [highlightedAgentId, setHighlightedAgentId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [isMdUp, setIsMdUp] = useState(false);
+  const [hasPromptedSampleSelection, setHasPromptedSampleSelection] = useState(false);
   const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const samplePanelRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stage = session?.state.stage ?? null;
   const hasPendingQuestion =
@@ -99,14 +100,6 @@ export function AuditFlowDemo() {
   useEffect(() => {
     prevMsgCount.current = session?.messages?.length ?? 0;
   }, [session?.messages?.length]);
-
-  useEffect(() => {
-    return () => {
-      if (highlightTimerRef.current) {
-        clearTimeout(highlightTimerRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 768px)");
@@ -212,6 +205,8 @@ export function AuditFlowDemo() {
 
     const userTask = taskDescription;
     setTaskDescription("");
+    setLastSubmittedTask(userTask);
+    setHasPromptedSampleSelection(false);
 
     const timestamp = Date.now();
 
@@ -342,28 +337,46 @@ export function AuditFlowDemo() {
     setLocalMessages([]);
     setSubmitError(null);
     prevMsgCount.current = 0;
+    setSelectedAgentId(null);
+    setHasPromptedSampleSelection(false);
   }
 
-  function handleOpenDetailedReview(agentId: string) {
-    samplePanelRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-
-    setHighlightedAgentId(agentId);
-    if (highlightTimerRef.current) {
-      clearTimeout(highlightTimerRef.current);
+  function handleEditRequirements() {
+    handleReset();
+    if (lastSubmittedTask) {
+      setTaskDescription(lastSubmittedTask);
     }
-    highlightTimerRef.current = setTimeout(() => {
-      setHighlightedAgentId(null);
-      highlightTimerRef.current = null;
-    }, 1000);
+  }
+
+  function handleSelectSample(agentId: string) {
+    setSelectedAgentId(agentId);
   }
 
   const hasSession = !!session;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
   const hasSamplesReady = stage === "evaluating" && !!evaluatingState && evaluatingState.samples.length > 0;
   const showMiddlePanel = hasSamplesReady && isMdUp;
+
+  useEffect(() => {
+    if (!evaluatingState || evaluatingState.samples.length === 0) return;
+    if (!selectedAgentId || !evaluatingState.samples.some((s) => s.agentId === selectedAgentId)) {
+      setSelectedAgentId(evaluatingState.samples[0].agentId);
+    }
+  }, [evaluatingState, selectedAgentId]);
+
+  useEffect(() => {
+    if (!hasSamplesReady || hasPromptedSampleSelection) return;
+    setLocalMessages((prev) => [
+      ...prev,
+      {
+        source: "assistant",
+        id: `assistant-${Date.now()}`,
+        text: "Please choose one sample in the Sample Area, then confirm to continue.",
+        ts: Date.now(),
+      },
+    ]);
+    setHasPromptedSampleSelection(true);
+  }, [hasPromptedSampleSelection, hasSamplesReady]);
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -398,36 +411,49 @@ export function AuditFlowDemo() {
               {!sessionId && (
                 <div>
                   <OrchestratorLabel />
-                  <p className="font-mono text-xs leading-relaxed text-zinc-500">
-                    // READY — describe a task to start the auction pipeline
+                  <p className="text-xs leading-relaxed text-zinc-500">
+                    Ready. Describe a task to start the auction pipeline.
                   </p>
                 </div>
               )}
 
-              {displayMessages.map((dm, i) => {
-                if (dm.source === "user") {
-                  return <UserMessage key={dm.id} id={dm.id} text={dm.text} />;
-                }
-                if (dm.source === "assistant") {
-                  return <AssistantMessage key={dm.id} id={dm.id} text={dm.text} />;
-                }
-                const backend = dm as Extract<DisplayMessage, { source: "backend" }>;
-                const prevDm = i > 0 ? displayMessages[i - 1] : null;
-                const showLabel = !prevDm || prevDm.source === "user";
-                return (
-                  <div key={backend.msg.id}>
-                    {showLabel && <OrchestratorLabel />}
+              {(() => {
+                const nodes: React.ReactNode[] = [];
+                let i = 0;
+                while (i < displayMessages.length) {
+                  const dm = displayMessages[i];
+
+                  if (dm.source === "user") {
+                    nodes.push(<UserMessage key={dm.id} id={dm.id} text={dm.text} />);
+                    i += 1;
+                    continue;
+                  }
+
+                  if (dm.source === "assistant") {
+                    nodes.push(<AssistantMessage key={dm.id} id={dm.id} text={dm.text} />);
+                    i += 1;
+                    continue;
+                  }
+
+                  const grouped: OrchestratorMessage[] = [];
+                  while (i < displayMessages.length && displayMessages[i].source === "backend") {
+                    const backend = displayMessages[i] as Extract<DisplayMessage, { source: "backend" }>;
+                    grouped.push(backend.msg);
+                    i += 1;
+                  }
+
+                  nodes.push(
                     <BackendMessage
-                      message={backend.msg}
+                      key={`backend-group-${grouped[0]?.id ?? i}`}
+                      messages={grouped}
                       canApprove={stage === "evaluating"}
                       isPending={isPending}
                       onApprove={handleApprove}
-                      compactSamples={showMiddlePanel}
-                      onOpenDetails={showMiddlePanel ? handleOpenDetailedReview : undefined}
-                    />
-                  </div>
-                );
-              })}
+                    />,
+                  );
+                }
+                return nodes;
+              })()}
 
               {stage === "delivered" && <AuditTrail events={session?.auditTrail ?? []} />}
 
@@ -462,8 +488,10 @@ export function AuditFlowDemo() {
                 bids={evaluatingState?.bids ?? []}
                 isPending={isPending}
                 onApprove={handleApprove}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={handleSelectSample}
+                onEditRequirements={handleEditRequirements}
                 layout="main"
-                highlightedAgentId={highlightedAgentId}
               />
             </div>
           </div>
