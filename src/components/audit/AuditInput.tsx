@@ -40,40 +40,43 @@ export function AuditInput({
   submitError,
 }: AuditInputProps) {
   return (
-    <div className="border-t border-zinc-100 px-4 py-3 md:px-6">
+    <div className="border-t border-zinc-100 px-6 py-4 md:px-12">
       <form
-        className="mx-auto flex max-w-2xl items-end gap-2"
+        className="mx-auto flex max-w-2xl items-center gap-2"
         onSubmit={onSubmit}
       >
-        <div className="relative flex-1">
+        <button
+          type="button"
+          onClick={onToggleSettings}
+          className="flex-shrink-0 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+          title="Budget & weights"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+          </svg>
+        </button>
+
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 focus-within:border-zinc-400 focus-within:bg-white">
+          <span className="flex-shrink-0 font-mono text-xs text-zinc-300">//</span>
           <input
             type="text"
             value={taskDescription}
             onChange={(e) => onTaskChange(e.target.value)}
-            placeholder={disabled ? "Auction in progress..." : "Describe a task to audit..."}
+            placeholder={disabled ? "AUCTION_IN_PROGRESS..." : "ENTER_TASK_PROMPT..."}
             disabled={disabled || isSubmitting}
-            className="w-full rounded-xl border border-zinc-300 bg-zinc-50 py-2.5 pl-3 pr-20 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white disabled:opacity-50"
+            className="flex-1 bg-transparent font-mono text-xs text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50"
           />
-          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onToggleSettings}
-              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600"
-              title="Settings"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
-              </svg>
-            </button>
-            <button
-              type="submit"
-              disabled={disabled || isSubmitting || !taskDescription.trim()}
-              className="rounded-lg bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
-            >
-              {isSubmitting ? "Verifying..." : "Send"}
-            </button>
-          </div>
         </div>
+
+        <button
+          type="submit"
+          disabled={disabled || isSubmitting || !taskDescription.trim()}
+          className="flex-shrink-0 rounded-md bg-emerald-500 p-2 text-white hover:bg-emerald-600 disabled:opacity-40"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+          </svg>
+        </button>
       </form>
 
       {showSettings && (

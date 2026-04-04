@@ -10,6 +10,7 @@ import { AuditTrail } from "@/components/audit/AuditTrail";
 import {
   AssistantMessage,
   BackendMessage,
+  OrchestratorLabel,
   TypingIndicator,
   UserMessage,
 } from "@/components/audit/ChatMessage";
@@ -279,16 +280,18 @@ export function AuditFlowDemo() {
       />
 
       {/* Chat messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
-        <div className="mx-auto max-w-2xl space-y-3">
+      <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
+        <div className="mx-auto max-w-2xl space-y-6">
           {!sessionId && (
-            <AssistantMessage
-              id="welcome"
-              text="Hi! I'm AgentCheck. Describe a task and I'll run the full auction, scoring, and audit pipeline for you."
-            />
+            <div>
+              <OrchestratorLabel />
+              <p className="font-mono text-xs leading-relaxed text-zinc-500">
+                // READY — describe a task to start the auction pipeline
+              </p>
+            </div>
           )}
 
-          {displayMessages.map((dm) => {
+          {displayMessages.map((dm, i) => {
             if (dm.source === "user") {
               return <UserMessage key={dm.id} id={dm.id} text={dm.text} />;
             }
@@ -296,20 +299,30 @@ export function AuditFlowDemo() {
               return <AssistantMessage key={dm.id} id={dm.id} text={dm.text} />;
             }
             const backend = dm as Extract<DisplayMessage, { source: "backend" }>;
+            // Show ORCHESTRATOR label before the first backend message or after a user message
+            const prevDm = i > 0 ? displayMessages[i - 1] : null;
+            const showLabel = !prevDm || prevDm.source === "user";
             return (
-              <BackendMessage
-                key={backend.msg.id}
-                message={backend.msg}
-                canApprove={stage === "evaluating"}
-                isPending={isPending}
-                onApprove={handleApprove}
-              />
+              <div key={backend.msg.id}>
+                {showLabel && <OrchestratorLabel />}
+                <BackendMessage
+                  message={backend.msg}
+                  canApprove={stage === "evaluating"}
+                  isPending={isPending}
+                  onApprove={handleApprove}
+                />
+              </div>
             );
           })}
 
           {stage === "delivered" && <AuditTrail events={session?.auditTrail ?? []} />}
 
-          {isTyping && <TypingIndicator />}
+          {isTyping && (
+            <div>
+              <OrchestratorLabel />
+              <TypingIndicator />
+            </div>
+          )}
 
           <div ref={chatEndRef} />
         </div>
