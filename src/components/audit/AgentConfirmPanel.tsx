@@ -40,6 +40,7 @@ export function AgentConfirmPanel({
   if (!selectedSample) return null;
 
   const scorePercent = Math.round(selectedSample.score * 100);
+  const isComicTask = selectedSample.taskKind === "four-panel-comic";
 
   const containerClass =
     layout === "main"
@@ -50,9 +51,9 @@ export function AgentConfirmPanel({
     <div className={containerClass}>
       <div className="mb-5">
         <p className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-          Sample Area
+          Agent Selection
         </p>
-        <p className="mt-1 text-xs text-zinc-500">Review the selected sample and confirm.</p>
+        <p className="mt-1 text-xs text-zinc-500">Compare agent style, plan, and sample quality.</p>
       </div>
 
       <div className="mb-3 space-y-2">
@@ -89,6 +90,9 @@ export function AgentConfirmPanel({
                 <p className={`text-[10px] ${isSelected ? "text-white/85" : "text-zinc-500"}`}>
                   {scorePercent > 0 ? `${scorePercent}/100` : "Scoring..."}
                 </p>
+                <p className={`line-clamp-1 text-[9px] ${isSelected ? "text-white/80" : "text-zinc-400"}`}>
+                  {sample.sampleTitle}
+                </p>
               </button>
             );
           })}
@@ -111,12 +115,19 @@ export function AgentConfirmPanel({
                 {selectedSample.agentName}
               </span>
             </div>
+            <p className="mt-1 text-[10px] text-zinc-500">{selectedSample.sampleTitle}</p>
             <p className="mt-0.5 font-mono text-[10px] text-zinc-400">{selectedSample.model}</p>
           </div>
           <span className="font-mono text-sm font-bold text-zinc-700">
             {scorePercent > 0 ? scorePercent : "–"}
           </span>
         </div>
+
+        {isComicTask && (
+          <div className="mt-2 inline-flex rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+            Keyframe Sample (1 image)
+          </div>
+        )}
 
         {scorePercent > 0 && (
           <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-zinc-200">
@@ -147,11 +158,86 @@ export function AgentConfirmPanel({
           )}
         </div>
 
+        {isComicTask && (
+          <p className="mt-2 text-[11px] text-sky-700">
+            Sample phase is one representative frame. Delivery phase should output a full 4-panel comic.
+          </p>
+        )}
+
         {selectedBid && (
           <div className="mt-2 flex gap-3 text-[11px] text-zinc-500">
             <span>${selectedBid.quoteUsd.toFixed(2)}</span>
             <span>{selectedBid.etaMinutes}min</span>
             <span className="text-emerald-700">{Math.round(selectedBid.reputation * 100)}% rep</span>
+          </div>
+        )}
+
+        {selectedSample.scoreBreakdown && (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+            <p className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+              Judge Breakdown
+            </p>
+            <div className="mt-2 space-y-1.5">
+              <MetricBar label="Quality" value={selectedSample.scoreBreakdown.quality} />
+              <MetricBar label="Price" value={selectedSample.scoreBreakdown.price} />
+              <MetricBar label="Speed" value={selectedSample.scoreBreakdown.speed} />
+            </div>
+          </div>
+        )}
+
+        {selectedSample.persona && (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-white p-2">
+            <p className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+              Agent Profile
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Personality:</span> {selectedSample.persona.personality}
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Taste:</span> {selectedSample.persona.taste}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {selectedSample.persona.skills.slice(0, 4).map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedSample.plan && (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+            <p className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+              Execution Plan
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Concept:</span> {selectedSample.plan.concept}
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Sample:</span> {selectedSample.plan.samplePlan}
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Deliver:</span> {selectedSample.plan.deliverPlan}
+            </p>
+            <p className="mt-1 text-[11px] text-amber-700">
+              <span className="font-semibold">Risk:</span> {selectedSample.plan.qualityRisk}
+            </p>
+            {selectedSample.plan.panelFlow.length > 0 && (
+              <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                <p className="text-[10px] font-semibold text-zinc-500 uppercase">Panel Flow</p>
+                <div className="mt-1 space-y-0.5">
+                  {selectedSample.plan.panelFlow.map((step, idx) => (
+                    <p key={`${idx}-${step}`} className="text-[11px] text-zinc-700">
+                      Panel {idx + 1}: {step}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -211,6 +297,19 @@ export function AgentConfirmPanel({
           Edit requirements
         </button>
       </div>
+    </div>
+  );
+}
+
+function MetricBar({ label, value }: { label: string; value: number }) {
+  const percent = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-12 text-[10px] text-zinc-500">{label}</span>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200">
+        <div style={{ width: `${percent}%` }} className="h-1.5 rounded-full bg-emerald-400" />
+      </div>
+      <span className="w-8 text-right text-[10px] text-zinc-600">{percent}</span>
     </div>
   );
 }
