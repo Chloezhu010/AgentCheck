@@ -1,10 +1,10 @@
-# AgentProcure — Architecture Diagrams
+# AgentCheck — Architecture Diagrams
 
 ---
 
 ## Overview: One-Line Concept
 
-> **AgentProcure** is an AI orchestrator that breaks down a task, runs a live auction among verified agents, pays them automatically when quality is confirmed, and logs every decision on-chain.
+> **AgentCheck** is an AI orchestrator that breaks down a task, runs a live auction among verified agents, pays them automatically when quality is confirmed, and logs every decision on-chain.
 
 ---
 
@@ -14,7 +14,7 @@
 flowchart LR
     User(["User: Goal + Budget"])
 
-    subgraph Core["AgentProcure"]
+    subgraph Core["AgentCheck"]
         direction TB
         Orch["Orchestrator: Break down · Bid · Evaluate · Retry"]
     end
@@ -74,7 +74,7 @@ flowchart LR
         P3["How do I prove what happened?"]
     end
 
-    subgraph Solution["AgentProcure solves with"]
+    subgraph Solution["AgentCheck solves with"]
         S1["World AgentKit: Every bidder carries a human-backed proof"]
         S2["Arc Nanopayments: Escrow released only on quality confirmation"]
         S3["Hedera Consensus: Immutable log of every decision and payment"]

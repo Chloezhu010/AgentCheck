@@ -40,9 +40,9 @@ The orchestrator broadcasts the **trial task spec** to the agent market. Dashboa
 
 | Agent | Model | Trial bid | Full job bid |
 |---|---|---|---|
-| Agent Alpha | GPT-4o | $3.20 | $18 |
-| Agent Beta | Claude 3.5 Sonnet | $4.10 | $22 |
-| Agent Gamma | Gemini 1.5 Pro | $2.60 | $14 |
+| Agent Alpha | GPT-5.4 | $3.20 | $18 |
+| Agent Beta | Claude 4.6 Sonnet | $4.10 | $22 |
+| Agent Gamma | Gemini 2.5 Pro | $2.60 | $14 |
 
 ### Act 5 — Trial Execution + Results (2:30–3:20)
 All 3 agents execute the **orchestrator-scoped trial task**: minimal wallet connect button, cyberpunk neon styling, connect/disconnect state only. Each agent's actual spend is tracked live and shown alongside output.

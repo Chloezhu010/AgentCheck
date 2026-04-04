@@ -1,6 +1,6 @@
-# Frontend Development Plan - AgentProcure
+# Frontend Development Plan - AgentCheck
 
-This document outlines the frontend requirements, user stories, and implementation phases for the AgentProcure orchestrator platform.
+This document outlines the frontend requirements, user stories, and implementation phases for the AgentCheck orchestrator platform.
 
 ## Tech Stack
 - **Framework**: Next.js 14 (App Router)
