@@ -8,6 +8,7 @@ import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { AuditTrail } from "@/components/audit/AuditTrail";
 import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
+import { AgentConfirmPanel } from "@/components/audit/AgentConfirmPanel";
 import {
   AssistantMessage,
   BackendMessage,
@@ -352,13 +353,27 @@ export function AuditFlowDemo() {
 
         {/* Execution flow panel — slides in when session is active */}
         {hasSession && session && (
-          <div className="hidden w-72 flex-shrink-0 animate-in slide-in-from-right-4 duration-300 md:block xl:w-80">
+          <div className="hidden w-64 flex-shrink-0 animate-in slide-in-from-right-4 duration-300 md:block xl:w-72">
             <ExecutionFlow
               state={session.state}
               countdownSeconds={countdownSeconds}
             />
           </div>
         )}
+
+        {/* Agent confirm panel — slides in when samples are ready */}
+        {stage === "evaluating" &&
+          session?.state.stage === "evaluating" &&
+          session.state.samples.length > 0 && (
+            <div className="hidden md:block">
+              <AgentConfirmPanel
+                samples={session.state.samples}
+                bids={session.state.bids}
+                isPending={isPending}
+                onApprove={handleApprove}
+              />
+            </div>
+          )}
       </div>
 
       <WorldIdModal gate={worldId} />
