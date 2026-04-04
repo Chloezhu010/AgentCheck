@@ -72,3 +72,12 @@ export type ApproveAgentInput = z.infer<typeof ApproveAgentSchema>;
 export type HederaAuditEventInput = z.infer<typeof HederaAuditEventSchema>;
 export type HederaAuditQueryInput = z.infer<typeof HederaAuditQuerySchema>;
 export type HederaPaymentRequestInput = z.infer<typeof HederaPaymentRequestSchema>;
+
+// Agent image generation
+
+export const GenerateImageSchema = z.object({
+  agentId: z.enum(["agent-alpha", "agent-beta", "agent-gamma"]),
+  prompt: z.string().min(1, "Prompt is required").max(2000),
+});
+
+export type GenerateImageInput = z.infer<typeof GenerateImageSchema>;
