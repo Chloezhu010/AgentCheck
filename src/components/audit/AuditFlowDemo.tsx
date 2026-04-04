@@ -7,6 +7,7 @@ import { WORLD_ACTIONS, worldScope } from "@/lib/world-id";
 import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { AuditTrail } from "@/components/audit/AuditTrail";
+import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
 import {
   AssistantMessage,
   BackendMessage,
@@ -267,6 +268,8 @@ export function AuditFlowDemo() {
     prevMsgCount.current = 0;
   }
 
+  const hasSession = !!session;
+
   return (
     <div className="flex h-screen flex-col bg-white">
       <AuditHeader
@@ -279,70 +282,84 @@ export function AuditFlowDemo() {
         onToggleDevMode={() => setDevMode((d) => !d)}
       />
 
-      {/* Chat messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
-        <div className="mx-auto max-w-2xl space-y-6">
-          {!sessionId && (
-            <div>
-              <OrchestratorLabel />
-              <p className="font-mono text-xs leading-relaxed text-zinc-500">
-                // READY — describe a task to start the auction pipeline
-              </p>
+      {/* Main body: chat + optional execution flow panel */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Chat column */}
+        <div className={`flex flex-col ${hasSession ? "flex-1" : "w-full"} overflow-hidden`}>
+          <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
+            <div className="mx-auto max-w-2xl space-y-6">
+              {!sessionId && (
+                <div>
+                  <OrchestratorLabel />
+                  <p className="font-mono text-xs leading-relaxed text-zinc-500">
+                    // READY — describe a task to start the auction pipeline
+                  </p>
+                </div>
+              )}
+
+              {displayMessages.map((dm, i) => {
+                if (dm.source === "user") {
+                  return <UserMessage key={dm.id} id={dm.id} text={dm.text} />;
+                }
+                if (dm.source === "assistant") {
+                  return <AssistantMessage key={dm.id} id={dm.id} text={dm.text} />;
+                }
+                const backend = dm as Extract<DisplayMessage, { source: "backend" }>;
+                const prevDm = i > 0 ? displayMessages[i - 1] : null;
+                const showLabel = !prevDm || prevDm.source === "user";
+                return (
+                  <div key={backend.msg.id}>
+                    {showLabel && <OrchestratorLabel />}
+                    <BackendMessage
+                      message={backend.msg}
+                      canApprove={stage === "evaluating"}
+                      isPending={isPending}
+                      onApprove={handleApprove}
+                    />
+                  </div>
+                );
+              })}
+
+              {stage === "delivered" && <AuditTrail events={session?.auditTrail ?? []} />}
+
+              {isTyping && (
+                <div>
+                  <OrchestratorLabel />
+                  <TypingIndicator />
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
             </div>
-          )}
+          </div>
 
-          {displayMessages.map((dm, i) => {
-            if (dm.source === "user") {
-              return <UserMessage key={dm.id} id={dm.id} text={dm.text} />;
-            }
-            if (dm.source === "assistant") {
-              return <AssistantMessage key={dm.id} id={dm.id} text={dm.text} />;
-            }
-            const backend = dm as Extract<DisplayMessage, { source: "backend" }>;
-            // Show ORCHESTRATOR label before the first backend message or after a user message
-            const prevDm = i > 0 ? displayMessages[i - 1] : null;
-            const showLabel = !prevDm || prevDm.source === "user";
-            return (
-              <div key={backend.msg.id}>
-                {showLabel && <OrchestratorLabel />}
-                <BackendMessage
-                  message={backend.msg}
-                  canApprove={stage === "evaluating"}
-                  isPending={isPending}
-                  onApprove={handleApprove}
-                />
-              </div>
-            );
-          })}
-
-          {stage === "delivered" && <AuditTrail events={session?.auditTrail ?? []} />}
-
-          {isTyping && (
-            <div>
-              <OrchestratorLabel />
-              <TypingIndicator />
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
+          <AuditInput
+            taskDescription={taskDescription}
+            onTaskChange={setTaskDescription}
+            disabled={isFlowRunning}
+            isSubmitting={isSubmitting}
+            showSettings={showSettings}
+            onToggleSettings={() => setShowSettings(!showSettings)}
+            budgetUsd={budgetUsd}
+            onBudgetChange={setBudgetUsd}
+            weights={weights}
+            weightPercentages={weightPercentages}
+            onWeightChange={handleWeightChange}
+            onSubmit={handleStartAuction}
+            submitError={submitError}
+          />
         </div>
-      </div>
 
-      <AuditInput
-        taskDescription={taskDescription}
-        onTaskChange={setTaskDescription}
-        disabled={isFlowRunning}
-        isSubmitting={isSubmitting}
-        showSettings={showSettings}
-        onToggleSettings={() => setShowSettings(!showSettings)}
-        budgetUsd={budgetUsd}
-        onBudgetChange={setBudgetUsd}
-        weights={weights}
-        weightPercentages={weightPercentages}
-        onWeightChange={handleWeightChange}
-        onSubmit={handleStartAuction}
-        submitError={submitError}
-      />
+        {/* Execution flow panel — slides in when session is active */}
+        {hasSession && session && (
+          <div className="hidden w-72 flex-shrink-0 animate-in slide-in-from-right-4 duration-300 md:block xl:w-80">
+            <ExecutionFlow
+              state={session.state}
+              countdownSeconds={countdownSeconds}
+            />
+          </div>
+        )}
+      </div>
 
       <WorldIdModal gate={worldId} />
     </div>
