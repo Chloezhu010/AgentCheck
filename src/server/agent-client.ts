@@ -56,8 +56,15 @@ export async function fetchAllBids(
 export async function fetchAllSamples(
   prompt: string,
 ): Promise<SampleEvaluation[]> {
+  return fetchSamplesForAgents(prompt, AGENT_IDS);
+}
+
+export async function fetchSamplesForAgents(
+  prompt: string,
+  agentIds: ImageAgentId[],
+): Promise<SampleEvaluation[]> {
   const results = await Promise.allSettled(
-    AGENT_IDS.map((id) => fetchSample(id, prompt)),
+    agentIds.map((id) => fetchSample(id, prompt)),
   );
   return results
     .filter(

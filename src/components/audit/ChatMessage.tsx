@@ -68,19 +68,6 @@ export function BackendMessage({
                 />
               ) : null}
 
-              {message.options && message.options.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {message.options.map((opt) => (
-                    <span
-                      key={opt}
-                      className="rounded-full border border-zinc-300 bg-white px-2.5 py-1 font-mono text-[11px] font-medium text-zinc-600"
-                    >
-                      {opt}
-                    </span>
-                  ))}
-                </div>
-              )}
-
               {message.kind === "scoreCanvas" && message.samples && message.samples.length > 0 && (
                 <div className="mt-2 space-y-2 rounded-lg border border-zinc-200 bg-white p-3">
                   <p className="text-[11px] font-medium text-zinc-700">Samples received:</p>
