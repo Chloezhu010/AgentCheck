@@ -7,6 +7,8 @@ type AgentConfirmPanelProps = {
   bids: AgentBid[];
   isPending: boolean;
   onApprove: (sample: SampleEvaluation) => void;
+  layout?: "sidebar" | "main";
+  highlightedAgentId?: string | null;
 };
 
 export function AgentConfirmPanel({
@@ -14,14 +16,20 @@ export function AgentConfirmPanel({
   bids,
   isPending,
   onApprove,
+  layout = "sidebar",
+  highlightedAgentId = null,
 }: AgentConfirmPanelProps) {
   if (samples.length === 0) return null;
 
   const best = samples[0];
   const bestBid = bids.find((b) => b.id === best.agentId);
+  const containerClass =
+    layout === "main"
+      ? "flex h-full min-w-0 flex-1 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-6 py-6 xl:px-8"
+      : "flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 py-6 xl:w-80";
 
   return (
-    <div className="flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 py-6 animate-in slide-in-from-right-4 duration-300 xl:w-80">
+    <div className={containerClass}>
       {/* Header */}
       <div className="mb-5">
         <p className="text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
@@ -46,7 +54,11 @@ export function AgentConfirmPanel({
                 isTop
                   ? "border-emerald-200 bg-emerald-50"
                   : "border-zinc-200 bg-zinc-50"
-              }`}
+              } ${
+                layout === "main" && highlightedAgentId === sample.agentId
+                  ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(16,185,129,0.12)]"
+                  : ""
+              } transition-all duration-200`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">

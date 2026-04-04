@@ -8,6 +8,8 @@ type BackendMessageProps = {
   canApprove: boolean;
   isPending: boolean;
   onApprove: (sample: SampleEvaluation) => void;
+  compactSamples?: boolean;
+  onOpenDetails?: (agentId: string) => void;
 };
 
 function boldify(text: string): string {
@@ -44,6 +46,8 @@ export function BackendMessage({
   canApprove,
   isPending,
   onApprove,
+  compactSamples = false,
+  onOpenDetails,
 }: BackendMessageProps) {
   return (
     <div
@@ -66,6 +70,8 @@ export function BackendMessage({
               canApprove={canApprove}
               isPending={isPending}
               onApprove={onApprove}
+              compact={compactSamples}
+              onOpenDetails={onOpenDetails}
             />
           ))}
         </div>

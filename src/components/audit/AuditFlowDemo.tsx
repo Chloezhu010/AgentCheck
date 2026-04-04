@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { normalizeWeights } from "@/lib/audit-demo-data";
 import { useWorldIdGate, WorldIdModal } from "@/components/audit/WorldIdGate";
 import { WORLD_ACTIONS, worldScope } from "@/lib/world-id";
 import { AuditHeader } from "@/components/audit/AuditHeader";
@@ -25,8 +24,9 @@ import type {
 } from "@/types/audit";
 
 const POLL_INTERVAL_MS = 1500;
-
-const defaultWeights: IntentWeights = { quality: 40, price: 30, speed: 30 };
+const DEFAULT_BUDGET_USD = 50;
+const DEFAULT_WEIGHTS: IntentWeights = { quality: 40, price: 30, speed: 30 };
+const FLOW_PANEL_WIDTH_CLASS = "md:pr-64 xl:pr-72";
 
 type LocalMessage = {
   source: "assistant" | "user";
@@ -39,9 +39,6 @@ type DisplayMessage = LocalMessage | { source: "backend"; msg: OrchestratorMessa
 
 export function AuditFlowDemo() {
   const [taskDescription, setTaskDescription] = useState("");
-  const [budgetUsd, setBudgetUsd] = useState("50");
-  const [weights, setWeights] = useState<IntentWeights>(defaultWeights);
-  const [showSettings, setShowSettings] = useState(false);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<AuditSession | null>(null);
@@ -50,16 +47,19 @@ export function AuditFlowDemo() {
   const [isSubmitting, startSubmit] = useTransition();
   const [isPending, startApprove] = useTransition();
   const [devMode, setDevMode] = useState(false);
+  const [isFlowOpen, setIsFlowOpen] = useState(true);
+  const [highlightedAgentId, setHighlightedAgentId] = useState<string | null>(null);
   const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const samplePanelRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stage = session?.state.stage ?? null;
   const isFlowRunning = stage === "bidding" || stage === "evaluating";
 
-  const parsedBudget = Number.parseFloat(budgetUsd);
-  const totalBudget = Number.isNaN(parsedBudget) ? 0 : parsedBudget;
+  const totalBudget = DEFAULT_BUDGET_USD;
 
   const usedBudget =
     session?.state.stage === "delivered" ? session.state.quoteUsd : 0;
@@ -68,16 +68,6 @@ export function AuditFlowDemo() {
     session?.state.stage === "bidding"
       ? (session.state as Extract<AuditSessionState, { stage: "bidding" }>).countdownSeconds
       : 0;
-
-  const normalizedWeights = useMemo(() => normalizeWeights(weights), [weights]);
-  const weightPercentages = useMemo(
-    () => ({
-      quality: Math.round(normalizedWeights.quality * 100),
-      price: Math.round(normalizedWeights.price * 100),
-      speed: Math.round(normalizedWeights.speed * 100),
-    }),
-    [normalizedWeights],
-  );
 
   const displayMessages: DisplayMessage[] = useMemo(() => {
     const backendMsgs: DisplayMessage[] = (session?.messages ?? []).map((msg) => ({
@@ -105,6 +95,14 @@ export function AuditFlowDemo() {
   useEffect(() => {
     prevMsgCount.current = session?.messages?.length ?? 0;
   }, [session?.messages?.length]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+      }
+    };
+  }, []);
 
   // Polling
   useEffect(() => {
@@ -175,12 +173,12 @@ export function AuditFlowDemo() {
       const res = await fetch("/api/audit/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskDescription: userTask,
-          budgetUsd: totalBudget,
-          weights,
-        }),
-      });
+          body: JSON.stringify({
+            taskDescription: userTask,
+            budgetUsd: totalBudget,
+            weights: DEFAULT_WEIGHTS,
+          }),
+        });
 
       const data = await res.json();
 
@@ -197,11 +195,6 @@ export function AuditFlowDemo() {
       setSessionId(newId);
       setSession(newSession);
     });
-  }
-
-  function handleWeightChange(key: keyof IntentWeights, rawValue: string) {
-    const parsed = Number.parseInt(rawValue, 10);
-    setWeights((w) => ({ ...w, [key]: Number.isNaN(parsed) ? 0 : parsed }));
   }
 
   function handleApprove(sample: SampleEvaluation) {
@@ -269,7 +262,25 @@ export function AuditFlowDemo() {
     prevMsgCount.current = 0;
   }
 
+  function handleOpenDetailedReview(agentId: string) {
+    samplePanelRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
+    setHighlightedAgentId(agentId);
+    if (highlightTimerRef.current) {
+      clearTimeout(highlightTimerRef.current);
+    }
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedAgentId(null);
+      highlightTimerRef.current = null;
+    }, 1000);
+  }
+
   const hasSession = !!session;
+  const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
+  const hasSamplesReady = stage === "evaluating" && !!evaluatingState && evaluatingState.samples.length > 0;
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -284,9 +295,17 @@ export function AuditFlowDemo() {
       />
 
       {/* Main body: chat + optional execution flow panel */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div
+        className={`flex min-h-0 flex-1 overflow-hidden ${
+          isFlowOpen ? FLOW_PANEL_WIDTH_CLASS : ""
+        }`}
+      >
         {/* Chat column */}
-        <div className={`flex flex-col ${hasSession ? "flex-1" : "w-full"} overflow-hidden`}>
+        <div
+          className={`flex flex-col overflow-hidden ${
+            hasSamplesReady ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0" : hasSession ? "flex-1" : "w-full"
+          }`}
+        >
           <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
             <div className="mx-auto max-w-2xl space-y-6">
               {!sessionId && (
@@ -316,6 +335,8 @@ export function AuditFlowDemo() {
                       canApprove={stage === "evaluating"}
                       isPending={isPending}
                       onApprove={handleApprove}
+                      compactSamples={hasSamplesReady}
+                      onOpenDetails={handleOpenDetailedReview}
                     />
                   </div>
                 );
@@ -339,42 +360,71 @@ export function AuditFlowDemo() {
             onTaskChange={setTaskDescription}
             disabled={isFlowRunning}
             isSubmitting={isSubmitting}
-            showSettings={showSettings}
-            onToggleSettings={() => setShowSettings(!showSettings)}
-            budgetUsd={budgetUsd}
-            onBudgetChange={setBudgetUsd}
-            weights={weights}
-            weightPercentages={weightPercentages}
-            onWeightChange={handleWeightChange}
             onSubmit={handleStartAuction}
             submitError={submitError}
           />
         </div>
 
-        {/* Execution flow panel — slides in when session is active */}
-        {hasSession && session && (
-          <div className="hidden w-64 flex-shrink-0 animate-in slide-in-from-right-4 duration-300 md:block xl:w-72">
-            <ExecutionFlow
-              state={session.state}
-              countdownSeconds={countdownSeconds}
-            />
-          </div>
-        )}
-
-        {/* Agent confirm panel — slides in when samples are ready */}
-        {stage === "evaluating" &&
-          session?.state.stage === "evaluating" &&
-          session.state.samples.length > 0 && (
-            <div className="hidden md:block">
+        {/* Middle detail panel */}
+        {hasSamplesReady && (
+          <div ref={samplePanelRef} className="hidden min-w-0 flex-1 md:block">
+            <div className="h-full">
               <AgentConfirmPanel
-                samples={session.state.samples}
-                bids={session.state.bids}
+                samples={evaluatingState?.samples ?? []}
+                bids={evaluatingState?.bids ?? []}
                 isPending={isPending}
                 onApprove={handleApprove}
+                layout="main"
+                highlightedAgentId={highlightedAgentId}
               />
             </div>
-          )}
+          </div>
+        )}
       </div>
+
+      <aside className="fixed top-14 right-0 bottom-0 z-20 hidden items-start md:flex">
+        <button
+          type="button"
+          onClick={() => setIsFlowOpen((open) => !open)}
+          className="mt-4 inline-flex items-center rounded-l-md border border-r-0 border-zinc-200 bg-white px-2.5 py-2 text-zinc-600 hover:bg-zinc-50"
+          aria-label={isFlowOpen ? "Collapse execution flow" : "Expand execution flow"}
+        >
+          <svg
+            className="h-3.5 w-3.5"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+          >
+            {isFlowOpen ? (
+              <>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 3v14" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 7l3 3-3 3" />
+              </>
+            ) : (
+              <>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 3v14" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l-3 3 3 3" />
+              </>
+            )}
+          </svg>
+        </button>
+
+        {isFlowOpen && (
+          <div className="h-full w-64 border-l border-zinc-200 bg-zinc-50 xl:w-72">
+            {session ? (
+              <ExecutionFlow
+                state={session.state}
+                countdownSeconds={countdownSeconds}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center px-4 text-center font-mono text-[11px] text-zinc-400">
+                EXECUTION_FLOW_IDLE
+              </div>
+            )}
+          </div>
+        )}
+      </aside>
 
       <WorldIdModal gate={worldId} />
     </div>
