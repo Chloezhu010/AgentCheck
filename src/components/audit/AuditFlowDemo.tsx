@@ -287,7 +287,7 @@ export function AuditFlowDemo() {
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      {/* ── Top bar ── */}
+      {/* Top bar */}
       <header className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3 md:px-6">
         <ol className="flex gap-1.5">
           {stepLabels.map((label, index) => {
@@ -348,7 +348,7 @@ export function AuditFlowDemo() {
         </div>
       </header>
 
-      {/* ── Chat messages ── */}
+      {/* Chat messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
         <div className="mx-auto max-w-2xl space-y-3">
           {chatMessages.map((message) => (
@@ -443,7 +443,7 @@ export function AuditFlowDemo() {
         </div>
       </div>
 
-      {/* ── Input bar ── */}
+      {/* Input bar */}
       <div className="border-t border-zinc-100 px-4 py-3 md:px-6">
         <form
           className="mx-auto flex max-w-2xl items-end gap-2"
