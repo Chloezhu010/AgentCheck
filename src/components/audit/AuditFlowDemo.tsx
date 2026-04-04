@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { normalizeWeights } from "@/lib/audit-demo-data";
+import { useWorldIdGate, WorldIdModal } from "@/components/audit/WorldIdGate";
+import { WORLD_ACTIONS, worldScope } from "@/lib/world-id";
 import type {
   AuditSession,
   AuditSessionState,
@@ -75,6 +77,7 @@ export function AuditFlowDemo() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, startSubmit] = useTransition();
   const [isPending, startApprove] = useTransition();
+  const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   // Track what the client has already rendered to avoid duplicate messages
@@ -205,6 +208,26 @@ export function AuditFlowDemo() {
     ]);
 
     startSubmit(async () => {
+      // Gate 1: prove human identity before starting the auction
+      setChatMessages((prev) => [
+        ...prev,
+        msg("assistant", "text", "Verifying your identity with World ID before opening the auction..."),
+      ]);
+      try {
+        await worldId.trigger({
+          action: WORLD_ACTIONS.CREATE_AUDIT,
+          scope: worldScope.draft(crypto.randomUUID()),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "World ID verification failed";
+        setSubmitError(message);
+        setChatMessages((prev) => [
+          ...prev,
+          msg("assistant", "text", `Identity check failed: ${message}`),
+        ]);
+        return;
+      }
+
       const res = await fetch("/api/audit/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -262,6 +285,25 @@ export function AuditFlowDemo() {
     ]);
 
     startApprove(async () => {
+      // Gate 2: prove human identity before releasing payment
+      setChatMessages((prev) => [
+        ...prev,
+        msg("assistant", "text", "Verifying your identity with World ID before releasing payment..."),
+      ]);
+      try {
+        await worldId.trigger({
+          action: WORLD_ACTIONS.APPROVE_PAYMENT,
+          scope: worldScope.audit(sessionId),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "World ID verification failed";
+        setChatMessages((prev) => [
+          ...prev,
+          msg("assistant", "text", `Identity check failed: ${message}`),
+        ]);
+        return;
+      }
+
       const res = await fetch(`/api/audit/session/${sessionId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -413,7 +455,7 @@ export function AuditFlowDemo() {
                             disabled={stage !== "evaluating" || isPending}
                             className="mt-2.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
                           >
-                            {isPending ? "Approving..." : `Approve ${sample.agentName}`}
+                            {isPending ? "Verifying & Approving..." : `Approve ${sample.agentName}`}
                           </button>
                         </section>
                       );
@@ -476,7 +518,7 @@ export function AuditFlowDemo() {
                 disabled={isFlowRunning || isSubmitting || !taskDescription.trim()}
                 className="rounded-lg bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
               >
-                {isSubmitting ? "Starting..." : "Send"}
+                {isSubmitting ? "Verifying..." : "Send"}
               </button>
             </div>
           </div>
@@ -521,6 +563,9 @@ export function AuditFlowDemo() {
           </p>
         )}
       </div>
+
+      {/* World ID QR modal — renders the IDKit widget overlay */}
+      <WorldIdModal gate={worldId} />
     </div>
   );
 }
