@@ -1,6 +1,7 @@
 import { getPersona } from "@/server/agents/personas";
 import { getStoredSamples } from "@/server/tools/business";
 import { buildDeliveryReport } from "@/lib/audit-demo-data";
+import { buildAgentShortlist } from "@/lib/shortlist";
 import { makeMsg } from "@/server/orchestrator-session";
 import type { AgentBid, DeliveryReport, SampleEvaluation } from "@/types/audit";
 import type { SessionEntry, SelectedAgent } from "@/server/orchestrator-session";
@@ -51,6 +52,7 @@ export function applyDemoFallback(entry: SessionEntry, reason: unknown): void {
 
   const bids = buildFallbackBids();
   const samples = buildFallbackSamples(entry.session.input.taskDescription, bids);
+  const shortlist = buildAgentShortlist(bids, entry.session.input.weights, 3);
   const reasonText = reason instanceof Error ? reason.message : "unknown fallback reason";
 
   entry.currentBids = bids;
@@ -64,6 +66,7 @@ export function applyDemoFallback(entry: SessionEntry, reason: unknown): void {
     stage: "evaluating",
     bids,
     samples,
+    shortlist,
   };
   entry.session.pendingQuestion = undefined;
   entry.pendingAskCallId = undefined;
@@ -133,11 +136,13 @@ export function coerceBidsFromToolResult(result: unknown): AgentBid[] {
         id,
         agentName,
         model: readString(item, "style") ?? "unknown",
+        avatar: readString(item, "avatar") ?? defaultAvatarForAgent(id),
+        bidLine: readString(item, "bidLine") ?? defaultBidLineForAgent(id),
         trialQuoteUsd: readNumber(item, "trialQuoteUsd") ?? 0,
         quoteUsd: readNumber(item, "quoteUsd") ?? 0,
         etaMinutes: readNumber(item, "etaMinutes") ?? 0,
         reputation: readNumber(item, "reputation") ?? 0,
-        verified: false,
+        verified: readBoolean(item, "verified") ?? false,
       },
     ];
   });
@@ -151,6 +156,8 @@ function buildFallbackBids(): AgentBid[] {
     etaMinutes: number;
     reputation: number;
   }> = [
+    { id: "agent-epsilon", trialQuoteUsd: 4.8, quoteUsd: 24, etaMinutes: 52, reputation: 0.94 },
+    { id: "agent-delta", trialQuoteUsd: 3.6, quoteUsd: 19, etaMinutes: 38, reputation: 0.89 },
     { id: "agent-beta", trialQuoteUsd: 4.1, quoteUsd: 22, etaMinutes: 60, reputation: 0.91 },
     { id: "agent-alpha", trialQuoteUsd: 3.2, quoteUsd: 18, etaMinutes: 45, reputation: 0.85 },
     { id: "agent-gamma", trialQuoteUsd: 2.6, quoteUsd: 14, etaMinutes: 90, reputation: 0.78 },
@@ -162,6 +169,8 @@ function buildFallbackBids(): AgentBid[] {
       id: profile.id,
       agentName: persona?.name ?? profile.id,
       model: persona?.style ?? "Unknown style",
+      avatar: defaultAvatarForAgent(profile.id),
+      bidLine: defaultBidLineForAgent(profile.id),
       verified: true,
       trialQuoteUsd: profile.trialQuoteUsd,
       quoteUsd: profile.quoteUsd,
@@ -176,6 +185,8 @@ function buildFallbackSamples(
   bids: AgentBid[],
 ): SampleEvaluation[] {
   const scoreMap: Record<string, number> = {
+    "agent-epsilon": 0.94,
+    "agent-delta": 0.88,
     "agent-beta": 0.91,
     "agent-alpha": 0.86,
     "agent-gamma": 0.79,
@@ -189,6 +200,13 @@ function buildFallbackSamples(
   return bids
     .map((bid) => {
       const persona = getPersona(bid.id);
+      const scoreBreakdown =
+        breakdownMap[bid.id] ??
+        (bid.id === "agent-epsilon"
+          ? { quality: 0.95, price: 0.72, speed: 0.86 }
+          : bid.id === "agent-delta"
+            ? { quality: 0.88, price: 0.83, speed: 0.92 }
+            : { quality: 0.75, price: 0.75, speed: 0.75 });
 
       return {
         id: `fallback-${bid.id}`,
@@ -197,14 +215,18 @@ function buildFallbackSamples(
         model: bid.model,
         score: scoreMap[bid.id] ?? 0.75,
         recommendation:
-          bid.id === "agent-beta"
+          bid.id === "agent-epsilon"
+            ? "Most polished visual storytelling with top-end quality and consistent delivery confidence."
+            : bid.id === "agent-delta"
+              ? "Strong product-focused visuals with fast turnaround and balanced cost."
+              : bid.id === "agent-beta"
             ? "Best overall balance of quality and delivery confidence for the requested output."
             : bid.id === "agent-alpha"
               ? "Strong visual quality and fast turnaround, with slightly higher execution variance."
               : "Cost-efficient option with simpler style output and slower turnaround.",
         sampleTitle: `${bid.agentName} Fallback Sample`,
         summary: `Fallback preview generated for demo continuity. Task focus: ${taskDescription.slice(0, 140)}.`,
-        scoreBreakdown: breakdownMap[bid.id] ?? { quality: 0.75, price: 0.75, speed: 0.75 },
+        scoreBreakdown,
         persona: persona
           ? {
               personality: persona.personality,
@@ -305,4 +327,43 @@ function readString(record: Record<string, unknown> | null, key: string): string
 function readNumber(record: Record<string, unknown> | null, key: string): number | undefined {
   const value = record?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readBoolean(record: Record<string, unknown> | null, key: string): boolean | undefined {
+  const value = record?.[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function defaultAvatarForAgent(agentId: string): string {
+  switch (agentId) {
+    case "agent-alpha":
+      return "🎬";
+    case "agent-beta":
+      return "🎨";
+    case "agent-gamma":
+      return "🧩";
+    case "agent-delta":
+      return "🧠";
+    case "agent-epsilon":
+      return "🦊";
+    default:
+      return "🤖";
+  }
+}
+
+function defaultBidLineForAgent(agentId: string): string {
+  switch (agentId) {
+    case "agent-alpha":
+      return "Cinematic output, fast turnaround, and strong detail under your budget cap.";
+    case "agent-beta":
+      return "Balanced quality and reliability with predictable execution risk.";
+    case "agent-gamma":
+      return "Best for budget-first scope with minimalist direction and lower spend.";
+    case "agent-delta":
+      return "Product-focused visuals optimized for UX clarity and implementation readiness.";
+    case "agent-epsilon":
+      return "Premium storytelling direction with top-tier polish and consistency.";
+    default:
+      return "Ready to quote and execute against your trial scope.";
+  }
 }

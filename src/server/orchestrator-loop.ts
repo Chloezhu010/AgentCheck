@@ -1,6 +1,7 @@
 import { getGeminiClient } from "@/server/agents/gemini-client";
 import { allFunctionDeclarations, executeTool } from "@/server/tools";
 import { getStoredSamples } from "@/server/tools/business";
+import { buildAgentShortlist } from "@/lib/shortlist";
 import { makeMsg, sessions } from "@/server/orchestrator-session";
 import {
   applyDemoFallback,
@@ -11,7 +12,7 @@ import {
   tryParseEventLabel,
 } from "@/server/orchestrator-state";
 import type { FunctionCall } from "@google/genai";
-import type { ImageAgentId } from "@/types/agent";
+import { IMAGE_AGENT_IDS, type ImageAgentId } from "@/types/agent";
 import type { AuditEvent } from "@/types/audit";
 import type { SessionEntry } from "@/server/orchestrator-session";
 
@@ -20,7 +21,7 @@ const AGENT_STEP_TIMEOUT_MS = readTimeoutMs("AGENT_STEP_TIMEOUT_MS", 20_000);
 const TOOL_TIMEOUT_MS = readTimeoutMs("AGENT_TOOL_TIMEOUT_MS", 20_000);
 const REQUEST_SAMPLES_TIMEOUT_MS = readTimeoutMs("AGENT_REQUEST_SAMPLES_TIMEOUT_MS", 90_000);
 const LOOP_TIMEOUT_MS = readTimeoutMs("AGENT_LOOP_TIMEOUT_MS", 90_000);
-const ALL_AGENT_IDS: ImageAgentId[] = ["agent-alpha", "agent-beta", "agent-gamma"];
+const ALL_AGENT_IDS: ImageAgentId[] = [...IMAGE_AGENT_IDS];
 const HEDERA_AUDIT_TOPIC_ID = process.env.HEDERA_AUDIT_TOPIC_ID ?? "";
 
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are AgentCheck's orchestrator — an autonomous AI procurement agent.
@@ -38,8 +39,8 @@ You manage the full lifecycle of hiring an AI agent for a user's task: from broa
 ## Your flow
 1. Log the task intent to Hedera via hcs_submit_message.
 2. Broadcast RFQ (broadcast_rfq). Analyze the returned bids — compare prices, reputation, style fit.
-3. Share your analysis and recommendation with the user. Ask them to confirm which agents should proceed to trial (ask_user).
-4. Request trial samples (request_samples), then score them (score_samples). For multi-step tasks (e.g., four-panel comics), sample phase should still be one representative image only.
+3. Shortlist the best 3 agents for trial samples, explain why, and ask user to confirm.
+4. After user shortlist confirmation/selection, request trial samples (request_samples) from those agents and score them (score_samples). For multi-step tasks (e.g., four-panel comics), sample phase should still be one representative image only.
 5. Present the scored results and recommend the best agent with reasoning. Ask user to approve (ask_user).
 6. Once approved: lock escrow via hbar_transfer (operator ${process.env.HEDERA_ACCOUNT_ID ?? ""} → escrow ${process.env.HEDERA_ESCROW_ACCOUNT_ID ?? ""}), log it to Hedera.
 7. Confirm delivery. Release payment via hbar_transfer (escrow → operator as demo). Log completion to Hedera.
@@ -122,6 +123,7 @@ export function parseTrialAgentSelection(userMessage: string): ImageAgentId[] | 
   if (
     /\ball\s+agents?\b/.test(text) ||
     /\ball\s+three\b/.test(text) ||
+    /\ball\s+five\b/.test(text) ||
     /\beveryone\b/.test(text)
   ) {
     return [...ALL_AGENT_IDS];
@@ -136,6 +138,12 @@ export function parseTrialAgentSelection(userMessage: string): ImageAgentId[] | 
   }
   if (/\b(agent[-\s]?)?gamma\b/.test(text)) {
     selected.push("agent-gamma");
+  }
+  if (/\b(agent[-\s]?)?delta\b/.test(text)) {
+    selected.push("agent-delta");
+  }
+  if (/\b(agent[-\s]?)?epsilon\b/.test(text)) {
+    selected.push("agent-epsilon");
   }
 
   if (selected.length === 0) {
@@ -154,6 +162,8 @@ async function processToolCalls(
   let shouldPause = false;
 
   for (const call of calls) {
+    let pauseAfterToolResponse = false;
+
     if (Date.now() - startedAt > LOOP_TIMEOUT_MS) {
       applyDemoFallback(entry, new Error(`Agent loop timeout after ${LOOP_TIMEOUT_MS}ms`));
       return true;
@@ -198,10 +208,56 @@ async function processToolCalls(
 
       if (name === "broadcast_rfq") {
         entry.currentBids = coerceBidsFromToolResult(result);
+        const shortlist = buildAgentShortlist(entry.currentBids, entry.session.input.weights, 3);
+        entry.shortlist = shortlist;
+
+        const shortlistedAgentIds = shortlist?.shortlistedAgentIds.filter((agentId) =>
+          ALL_AGENT_IDS.includes(agentId),
+        ) ?? [];
+        const fallbackShortlistAgentIds = entry.currentBids
+          .slice(0, 3)
+          .flatMap((bid) => (ALL_AGENT_IDS.includes(bid.id as ImageAgentId) ? [bid.id as ImageAgentId] : []));
+        const recommendedTrialAgentIds =
+          shortlistedAgentIds.length > 0 ? shortlistedAgentIds : fallbackShortlistAgentIds;
+
+        if (recommendedTrialAgentIds.length > 0) {
+          entry.trialAgentIds = recommendedTrialAgentIds;
+        }
+
+        if (shortlist && recommendedTrialAgentIds.length > 0) {
+          const shortlistedSet = new Set(recommendedTrialAgentIds);
+          const shortlistNames = entry.currentBids
+            .filter((bid) => shortlistedSet.has(bid.id as ImageAgentId))
+            .map((bid) => bid.agentName)
+            .join(", ");
+          entry.session.messages.push(
+            makeMsg(
+              `RFQ analysis complete. ${shortlist.rationale} Preparing sample requests for: ${shortlistNames}.`,
+              "thought",
+            ),
+          );
+        }
+
+        if (recommendedTrialAgentIds.length > 0) {
+          const shortlistSet = new Set(recommendedTrialAgentIds);
+          const options = entry.currentBids
+            .filter((bid) => shortlistSet.has(bid.id as ImageAgentId))
+            .map((bid) => `${bid.agentName} (${bid.id})`);
+          const question =
+            "Shortlist is ready. Tick 1-3 agents in the middle panel, then continue to sample generation.";
+
+          entry.session.messages.push(makeMsg(question, "text", { options }));
+          entry.session.pendingQuestion = { question, options };
+          entry.pendingAskCallId = undefined;
+          shouldPause = true;
+          pauseAfterToolResponse = true;
+        }
+
         entry.session.state = {
           stage: "bidding",
           visibleBids: entry.currentBids,
           countdownSeconds: 0,
+          shortlist,
         };
         entry.session.updatedAt = Date.now();
       }
@@ -233,6 +289,7 @@ async function processToolCalls(
             stage: "evaluating",
             bids: entry.currentBids,
             samples,
+            shortlist: entry.shortlist,
           };
           entry.session.updatedAt = Date.now();
         } else {
@@ -265,6 +322,10 @@ async function processToolCalls(
         },
       ],
     });
+
+    if (pauseAfterToolResponse) {
+      break;
+    }
   }
 
   return shouldPause;

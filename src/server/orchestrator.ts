@@ -6,7 +6,7 @@ import { makeMsg, generateSessionId, sessions } from "@/server/orchestrator-sess
 import { setDeliveredState } from "@/server/orchestrator-state";
 import type { Content } from "@google/genai";
 import type { AuditSession, IntentInput } from "@/types/audit";
-import type { ImageAgentId } from "@/types/agent";
+import { IMAGE_AGENT_IDS, type ImageAgentId } from "@/types/agent";
 import type { SessionEntry } from "@/server/orchestrator-session";
 
 export function createSession(input: IntentInput): AuditSession {
@@ -179,7 +179,7 @@ export async function finalizeDelivery(
 }
 
 function isImageAgentId(value: string): value is ImageAgentId {
-  return value === "agent-alpha" || value === "agent-beta" || value === "agent-gamma";
+  return IMAGE_AGENT_IDS.includes(value as ImageAgentId);
 }
 
 function markLoopError(entry: SessionEntry, err: unknown): void {

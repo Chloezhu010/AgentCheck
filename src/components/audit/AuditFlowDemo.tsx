@@ -1,10 +1,13 @@
 "use client";
 
+import { useRef } from "react";
 import { AgentConfirmPanel } from "@/components/audit/AgentConfirmPanel";
 import { AuditConversation } from "@/components/audit/AuditConversation";
+import { AgentGroupChatPanel } from "@/components/audit/AgentGroupChatPanel";
 import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
+import { ExecutionFlowIdle } from "@/components/audit/ExecutionFlowIdle";
 import { WorldIdModal } from "@/components/audit/WorldIdGate";
 import { useAuditFlowController } from "@/components/audit/useAuditFlowController";
 
@@ -16,6 +19,14 @@ export function AuditFlowDemo() {
     controller.session?.state.stage === "delivered"
       ? controller.session.state.delivery
       : null;
+  const taskInputRef = useRef<HTMLInputElement>(null);
+
+  function handlePickPrompt(prompt: string) {
+    controller.setTaskDescription(prompt);
+    window.requestAnimationFrame(() => {
+      taskInputRef.current?.focus();
+    });
+  }
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -33,7 +44,7 @@ export function AuditFlowDemo() {
         }`}
       >
         <div
-          className={`flex flex-col overflow-hidden ${
+          className={`flex flex-col overflow-hidden transition-[width,flex-basis] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             controller.showMiddlePanel
               ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0"
               : controller.hasSession
@@ -50,6 +61,8 @@ export function AuditFlowDemo() {
               auditTrail={controller.session?.auditTrail ?? []}
               isTyping={controller.isTyping}
               chatEndRef={controller.chatEndRef}
+              taskDescription={controller.taskDescription}
+              onPickPrompt={handlePickPrompt}
             />
           </div>
 
@@ -61,22 +74,36 @@ export function AuditFlowDemo() {
             onSubmit={controller.handleSubmit}
             submitError={controller.submitError}
             placeholder={controller.hasPendingQuestion ? "Reply to the agent..." : undefined}
+            inputRef={taskInputRef}
           />
         </div>
 
         {controller.showMiddlePanel && (
-          <div className="hidden min-w-0 flex-1 md:block">
+          <div className="hidden min-w-0 flex-1 md:block motion-safe:animate-sample-panel-pullout">
             <div className="h-full">
-              <AgentConfirmPanel
-                samples={controller.evaluatingState?.samples ?? []}
-                bids={controller.evaluatingState?.bids ?? []}
-                isPending={controller.isPending}
-                onApprove={controller.handleApprove}
-                selectedAgentId={controller.selectedAgentId}
-                onSelectAgent={controller.handleSelectSample}
-                onEditRequirements={controller.handleEditRequirements}
-                layout="main"
-              />
+              {controller.middlePanelMode === "groupChat" ? (
+                <AgentGroupChatPanel
+                  taskDescription={controller.session?.input.taskDescription ?? ""}
+                  bids={controller.biddingState?.visibleBids ?? []}
+                  shortlist={controller.biddingState?.shortlist}
+                  pendingQuestion={controller.session?.pendingQuestion}
+                  isAwaitingSelection={Boolean(controller.session?.pendingQuestion)}
+                  isSubmittingSelection={controller.isSubmitting}
+                  onSubmitSelection={controller.handleSubmitShortlist}
+                />
+              ) : (
+                <AgentConfirmPanel
+                  samples={controller.fileSamples}
+                  bids={controller.fileBids}
+                  isPending={controller.isPending}
+                  onApprove={controller.handleApprove}
+                  selectedAgentId={controller.selectedAgentId}
+                  onSelectAgent={controller.handleSelectSample}
+                  onEditRequirements={controller.handleEditRequirements}
+                  layout="main"
+                  readOnly={controller.stage === "delivered"}
+                />
+              )}
             </div>
           </div>
         )}
@@ -119,11 +146,13 @@ export function AuditFlowDemo() {
                 taskDescription={controller.session.input.taskDescription}
                 totalBudgetUsd={controller.session.input.budgetUsd}
                 usedBudgetUsd={controller.usedBudget}
+                files={controller.fileSamples}
+                bids={controller.fileBids}
+                selectedAgentId={controller.selectedAgentId}
+                onPreviewFile={controller.handleSelectSample}
               />
             ) : (
-              <div className="flex h-full items-center justify-center px-4 text-center font-mono text-[11px] text-zinc-400">
-                EXECUTION_FLOW_IDLE
-              </div>
+              <ExecutionFlowIdle />
             )}
           </div>
         )}

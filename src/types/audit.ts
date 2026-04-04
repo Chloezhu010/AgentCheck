@@ -1,6 +1,7 @@
 import type { AgentTaskKind } from "@/types/agent";
 
 // Primitives
+import type { ImageAgentId } from "@/types/agent";
 
 export type FlowStage = "idle" | "agentic" | "bidding" | "evaluating" | "delivered" | "error";
 
@@ -16,6 +17,8 @@ export type AgentBid = {
   id: string;
   agentName: string;
   model: string;
+  avatar: string;
+  bidLine: string;
   trialQuoteUsd: number;
   quoteUsd: number;
   etaMinutes: number;
@@ -83,6 +86,11 @@ export type DeliveryComicFrame = {
   imageDataUrl: string;
 };
 
+export type AgentShortlist = {
+  shortlistedAgentIds: ImageAgentId[];
+  rationale: string;
+};
+
 // Orchestrator-generated messages (backend owns the narrative)
 
 export type OrchestratorMessage = {
@@ -104,8 +112,18 @@ export type IntentInput = {
 
 export type AuditSessionState =
   | { stage: "agentic" }
-  | { stage: "bidding"; visibleBids: AgentBid[]; countdownSeconds: number }
-  | { stage: "evaluating"; bids: AgentBid[]; samples: SampleEvaluation[] }
+  | {
+      stage: "bidding";
+      visibleBids: AgentBid[];
+      countdownSeconds: number;
+      shortlist?: AgentShortlist;
+    }
+  | {
+      stage: "evaluating";
+      bids: AgentBid[];
+      samples: SampleEvaluation[];
+      shortlist?: AgentShortlist;
+    }
   | {
       stage: "delivered";
       approvedAgentId: string;

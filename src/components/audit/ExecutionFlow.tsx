@@ -10,15 +10,17 @@ type Step = {
 
 function stepsForStage(stage: AuditSessionState["stage"]): Step[] {
   const all: Array<{ id: string; label: string }> = [
-    { id: "UNDERSTAND_TASK", label: "UNDERSTAND_TASK" },
-    { id: "PLAN_SUBAGENTS", label: "PLAN_SUBAGENTS" },
+    { id: "PARSE_INTENT", label: "PARSE_INTENT" },
+    { id: "OPEN_RFQ", label: "OPEN_RFQ" },
     { id: "COLLECT_BIDS", label: "COLLECT_BIDS" },
-    { id: "RUN_SAMPLES", label: "RUN_SAMPLE_IMAGE" },
-    { id: "CONFIRM_AGENT", label: "SCORE_AND_SELECT" },
-    { id: "FINALIZE", label: "DELIVER_FINAL" },
+    { id: "RUN_SAMPLES", label: "RUN_SAMPLES" },
+    { id: "CONFIRM_AGENT", label: "CONFIRM_AGENT" },
+    { id: "FINALIZE", label: "FINALIZE_REPORT" },
   ];
 
   const activeIndex: Record<AuditSessionState["stage"], number> = {
+    // Pre-RFQ reasoning phase: parsing intent and preparing RFQ.
+    // COLLECT_BIDS should only become active once stage enters "bidding".
     agentic: 1,
     bidding: 2,
     evaluating: 4,
@@ -39,6 +41,10 @@ type ExecutionFlowProps = {
   taskDescription: string;
   totalBudgetUsd: number;
   usedBudgetUsd: number;
+  files?: SampleEvaluation[];
+  bids?: AgentBid[];
+  selectedAgentId?: string | null;
+  onPreviewFile?: (agentId: string) => void;
 };
 
 function formatUsd(value: number): string {
@@ -51,19 +57,37 @@ export function ExecutionFlow({
   taskDescription,
   totalBudgetUsd,
   usedBudgetUsd,
+  files = [],
+  bids = [],
+  selectedAgentId = null,
+  onPreviewFile,
 }: ExecutionFlowProps) {
   const steps = stepsForStage(state.stage);
-  const bids: AgentBid[] =
+
+  const stateBids: AgentBid[] =
     state.stage === "bidding"
       ? state.visibleBids
-      : state.stage === "evaluating" || state.stage === "delivered"
-        ? (state as Extract<AuditSessionState, { stage: "evaluating" }>).bids ?? []
+      : state.stage === "evaluating"
+        ? state.bids
         : [];
+  const marketBids = stateBids.length > 0 ? stateBids : bids;
 
-  const samples: SampleEvaluation[] =
-    state.stage === "evaluating" ? state.samples : [];
+  const stateSamples: SampleEvaluation[] = state.stage === "evaluating" ? state.samples : [];
+  const evaluatedSamples = stateSamples.length > 0 ? stateSamples : files;
+  const previewFiles = files.length > 0 ? files : evaluatedSamples;
 
   const remainingBudgetUsd = Math.max(totalBudgetUsd - usedBudgetUsd, 0);
+  const usageRatio = totalBudgetUsd > 0 ? Math.min(Math.max(usedBudgetUsd / totalBudgetUsd, 0), 1) : 0;
+  const leftRatio =
+    totalBudgetUsd > 0 ? Math.min(Math.max(remainingBudgetUsd / totalBudgetUsd, 0), 1) : 0;
+  const leftPercent = Math.round(leftRatio * 100);
+  const usageTextClass =
+    usageRatio >= 0.9 ? "text-rose-600" : usageRatio >= 0.6 ? "text-amber-600" : "text-emerald-600";
+  const leftBarClass =
+    leftRatio <= 0.1 ? "bg-rose-500" : leftRatio <= 0.4 ? "bg-amber-500" : "bg-emerald-500";
+  const leftTextClass =
+    leftRatio <= 0.1 ? "text-rose-600" : leftRatio <= 0.4 ? "text-amber-600" : "text-emerald-600";
+  const remainingTextClass = remainingBudgetUsd > 0 ? "text-emerald-600" : "text-rose-600";
 
   return (
     <div className="flex h-full flex-col overflow-y-auto border-l border-zinc-100 bg-zinc-50 px-5 py-6 font-mono text-xs">
@@ -72,29 +96,40 @@ export function ExecutionFlow({
           <p className="mb-1 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
             Task_Brief
           </p>
-          <p className="line-clamp-3 leading-relaxed text-zinc-700">
-            {taskDescription}
-          </p>
+          <p className="line-clamp-3 leading-relaxed text-zinc-700">{taskDescription}</p>
 
           <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-[10px] text-zinc-500">
             <div className="flex items-center justify-between">
               <span>TOTAL / REMAINING</span>
               <span className="font-semibold text-zinc-700">
-                {formatUsd(totalBudgetUsd)} / {formatUsd(remainingBudgetUsd)}
+                <span className="text-zinc-700">{formatUsd(totalBudgetUsd)}</span>
+                <span className="text-zinc-400"> / </span>
+                <span className={remainingTextClass}>{formatUsd(remainingBudgetUsd)}</span>
               </span>
             </div>
             <div className="mt-1 flex items-center justify-between">
               <span>USED</span>
-              <span className="font-semibold text-zinc-700">{formatUsd(usedBudgetUsd)}</span>
+              <span className={`font-semibold ${usageTextClass}`}>{formatUsd(usedBudgetUsd)}</span>
+            </div>
+            <div className="mt-2">
+              <div className="mb-1 flex items-center justify-between text-[9px] tracking-wide text-zinc-400 uppercase">
+                <span>Budget left</span>
+                <span className={`font-semibold ${leftTextClass}`}>{leftPercent}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200">
+                <div
+                  style={{ width: `${leftPercent}%` }}
+                  className={`h-1.5 rounded-full transition-all duration-500 ${leftBarClass}`}
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Steps */}
       <div className="mb-6">
         <p className="mb-3 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-          Agent_Lifecycle
+          Execution_Flow
         </p>
         <ol className="space-y-2">
           {steps.map((step, i) => (
@@ -132,30 +167,38 @@ export function ExecutionFlow({
         </ol>
       </div>
 
-      {/* Auction market */}
-      {bids.length > 0 && (
+      {marketBids.length > 0 && (
         <div className="mb-6">
           <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
             Auction_Market
           </p>
           <div className="space-y-1.5">
-            {bids.map((bid) => (
-              <div
-                key={bid.id}
-                className="rounded border border-zinc-200 bg-white px-2.5 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-zinc-800">{bid.agentName}</p>
-                  <p className="truncate text-[10px] text-zinc-400">{bid.model}</p>
+            {marketBids.map((bid) => (
+              <div key={bid.id} className="rounded border border-zinc-200 bg-white px-2.5 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-zinc-800">{bid.agentName}</p>
+                    <p className="truncate text-[10px] text-zinc-400">{bid.model}</p>
+                  </div>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] ${
+                      bid.verified ? "bg-sky-50 text-sky-700" : "bg-zinc-100 text-zinc-500"
+                    }`}
+                  >
+                    {bid.verified ? "Verified" : "Unverified"}
+                  </span>
                 </div>
+
+                <p className="mt-1.5 line-clamp-2 text-[10px] text-zinc-600">{bid.bidLine}</p>
 
                 <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
                   <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
-                    Price ${bid.quoteUsd.toFixed(2)}
+                    Trial ${bid.trialQuoteUsd.toFixed(2)}
                   </span>
                   <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
-                    ETA {bid.etaMinutes}m
+                    Quote ${bid.quoteUsd.toFixed(2)}
                   </span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">ETA {bid.etaMinutes}m</span>
                   <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
                     Reputation {Math.round(bid.reputation * 100)}%
                   </span>
@@ -166,40 +209,94 @@ export function ExecutionFlow({
         </div>
       )}
 
-      {/* Quality evaluations */}
-      {samples.length > 0 && (
-        <div>
+      <div className="mb-6">
+        <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Files</p>
+        {previewFiles.length > 0 ? (
+          <div className="space-y-1.5">
+            {previewFiles.map((sample, i) => {
+              const scorePercent = Math.round(sample.score * 100);
+              const isSelected = selectedAgentId === sample.agentId;
+              const canPreview = typeof onPreviewFile === "function";
+
+              return (
+                <button
+                  key={sample.id}
+                  type="button"
+                  onClick={() => onPreviewFile?.(sample.agentId)}
+                  disabled={!canPreview}
+                  className={`flex w-full items-center gap-2 rounded border px-2.5 py-2 text-left ${
+                    isSelected
+                      ? "border-zinc-800 bg-zinc-900 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                  } disabled:cursor-default`}
+                >
+                  <span className={`text-[10px] ${isSelected ? "text-white/75" : "text-zinc-400"}`}>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate font-semibold ${isSelected ? "text-white" : "text-zinc-800"}`}>
+                      {sample.sampleTitle}
+                    </p>
+                    <p className={`truncate text-[10px] ${isSelected ? "text-white/75" : "text-zinc-500"}`}>
+                      {sample.agentName}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      isSelected ? "bg-white/15 text-white" : "bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {scorePercent > 0 ? `${scorePercent}` : "–"}
+                  </span>
+                  <span className={`text-[10px] font-semibold ${isSelected ? "text-white" : "text-zinc-600"}`}>
+                    Preview
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="rounded border border-dashed border-zinc-200 bg-white px-2.5 py-2 text-zinc-400">
+              FILES_PENDING
+            </div>
+            <div className="rounded border border-dashed border-zinc-200 bg-white px-2.5 py-2 text-zinc-400">
+              PREVIEW_PENDING
+            </div>
+          </div>
+        )}
+      </div>
+
+      {evaluatedSamples.length > 0 && (
+        <div className="mb-6">
           <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
             Quality_Evaluations
           </p>
           <div className="space-y-1.5">
-            {samples.map((s, i) => (
-              <div
-                key={s.id}
-                className="rounded border border-zinc-200 bg-white px-2.5 py-1.5"
-              >
+            {evaluatedSamples.map((sample, i) => (
+              <div key={sample.id} className="rounded border border-zinc-200 bg-white px-2.5 py-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-zinc-400">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="flex-1 font-semibold text-zinc-800">{s.agentName}</span>
+                  <span className="flex-1 font-semibold text-zinc-800">{sample.agentName}</span>
                   <div className="flex items-center gap-2">
                     <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-200">
                       <div
-                        style={{ width: `${Math.round(s.score * 100)}%` }}
+                        style={{ width: `${Math.round(sample.score * 100)}%` }}
                         className="h-1 rounded-full bg-emerald-400 transition-all duration-700"
                       />
                     </div>
                     <span className="w-8 text-right text-emerald-600">
-                      {s.score > 0 ? Math.round(s.score * 100) : "–"}
+                      {sample.score > 0 ? Math.round(sample.score * 100) : "–"}
                     </span>
                   </div>
                 </div>
-                {s.taskKind === "four-panel-comic" && (
+                {sample.taskKind === "four-panel-comic" && (
                   <p className="mt-1 text-[10px] text-sky-700">Keyframe sample only (1 image)</p>
                 )}
-                {s.scoreBreakdown && (
+                {sample.scoreBreakdown && (
                   <p className="mt-1 text-[10px] text-zinc-500">
-                    Q {Math.round(s.scoreBreakdown.quality * 100)} / P {Math.round(s.scoreBreakdown.price * 100)} /
-                    S {Math.round(s.scoreBreakdown.speed * 100)}
+                    Q {Math.round(sample.scoreBreakdown.quality * 100)} / P {Math.round(sample.scoreBreakdown.price * 100)} /
+                    S {Math.round(sample.scoreBreakdown.speed * 100)}
                   </p>
                 )}
               </div>

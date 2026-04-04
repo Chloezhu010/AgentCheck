@@ -5,6 +5,7 @@ import {
   TypingIndicator,
   UserMessage,
 } from "@/components/audit/ChatMessage";
+import { IdleHero } from "@/components/audit/IdleHero";
 import { AuditTrail } from "@/components/audit/AuditTrail";
 import type { RefObject, ReactNode } from "react";
 import type { AuditSession, DeliveryReport, OrchestratorMessage } from "@/types/audit";
@@ -16,8 +17,10 @@ type AuditConversationProps = {
   delivery: DeliveryReport | null;
   displayMessages: DisplayMessage[];
   isTyping: boolean;
+  onPickPrompt: (prompt: string) => void;
   sessionId: string | null;
   stage: AuditSession["state"]["stage"] | null;
+  taskDescription: string;
 };
 
 export function AuditConversation({
@@ -26,12 +29,18 @@ export function AuditConversation({
   delivery,
   displayMessages,
   isTyping,
+  onPickPrompt,
   sessionId,
   stage,
+  taskDescription,
 }: AuditConversationProps) {
+  const showIdleHero = !sessionId && displayMessages.length === 0 && !taskDescription.trim();
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      {!sessionId && (
+      {showIdleHero && <IdleHero onPickPrompt={onPickPrompt} />}
+
+      {!sessionId && !showIdleHero && (
         <div>
           <OrchestratorLabel />
           <p className="text-xs leading-relaxed text-zinc-500">
@@ -129,11 +138,37 @@ function renderConversationMessages(displayMessages: DisplayMessage[]): ReactNod
       continue;
     }
 
-    const groupedMessages: OrchestratorMessage[] = [];
-    while (i < displayMessages.length && displayMessages[i].source === "backend") {
-      const backendMessage = displayMessages[i] as Extract<DisplayMessage, { source: "backend" }>;
-      groupedMessages.push(backendMessage.msg);
+    if (displayMessage.source !== "backend") {
       i += 1;
+      continue;
+    }
+
+    const backendCurrent = displayMessage.msg;
+    if (backendCurrent.kind === "text" || backendCurrent.kind === "thought") {
+      nodes.push(
+        <AssistantMessage
+          key={backendCurrent.id}
+          id={backendCurrent.id}
+          text={backendCurrent.text}
+        />,
+      );
+      i += 1;
+      continue;
+    }
+
+    const groupedMessages: OrchestratorMessage[] = [];
+    while (i < displayMessages.length) {
+      const candidate = displayMessages[i];
+      if (candidate.source !== "backend") break;
+      if (candidate.msg.kind === "text" || candidate.msg.kind === "thought") break;
+
+      groupedMessages.push(candidate.msg);
+      i += 1;
+    }
+
+    if (groupedMessages.length === 0) {
+      i += 1;
+      continue;
     }
 
     nodes.push(

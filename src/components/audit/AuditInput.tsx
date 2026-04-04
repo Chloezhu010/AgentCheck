@@ -8,6 +8,7 @@ type AuditInputProps = {
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   submitError: string | null;
   placeholder?: string;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 };
 
 export function AuditInput({
@@ -18,6 +19,7 @@ export function AuditInput({
   onSubmit,
   submitError,
   placeholder,
+  inputRef,
 }: AuditInputProps) {
   return (
     <div className="border-t border-zinc-100 px-6 py-4 md:px-12">
@@ -27,6 +29,7 @@ export function AuditInput({
       >
         <div className="flex flex-1 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 focus-within:border-zinc-400 focus-within:bg-white">
           <input
+            ref={inputRef}
             type="text"
             value={taskDescription}
             onChange={(e) => onTaskChange(e.target.value)}

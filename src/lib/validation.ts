@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AuditEventType } from "@/types/hedera";
+import { IMAGE_AGENT_IDS } from "@/types/agent";
 
 export const IntentWeightsSchema = z.object({
   quality: z.number().min(0).max(100),
@@ -76,7 +77,7 @@ export type HederaPaymentRequestInput = z.infer<typeof HederaPaymentRequestSchem
 // Agent image generation
 
 export const GenerateImageSchema = z.object({
-  agentId: z.enum(["agent-alpha", "agent-beta", "agent-gamma"]),
+  agentId: z.enum(IMAGE_AGENT_IDS),
   prompt: z.string().min(1, "Prompt is required").max(2000),
 });
 
