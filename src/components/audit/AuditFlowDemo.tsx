@@ -7,7 +7,9 @@ import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { AuditTrail } from "@/components/audit/AuditTrail";
 import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
+import { ExecutionFlowIdle } from "@/components/audit/ExecutionFlowIdle";
 import { AgentConfirmPanel } from "@/components/audit/AgentConfirmPanel";
+import { IdleHero } from "@/components/audit/IdleHero";
 import {
   AssistantMessage,
   BackendMessage,
@@ -56,6 +58,7 @@ export function AuditFlowDemo() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const samplePanelRef = useRef<HTMLDivElement>(null);
+  const taskInputRef = useRef<HTMLInputElement>(null);
   const prevMsgCount = useRef(0);
 
   const stage = session?.state.stage ?? null;
@@ -351,10 +354,18 @@ export function AuditFlowDemo() {
     setSelectedAgentId(agentId);
   }
 
+  function handlePickPrompt(prompt: string) {
+    setTaskDescription(prompt);
+    window.requestAnimationFrame(() => {
+      taskInputRef.current?.focus();
+    });
+  }
+
   const hasSession = !!session;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
   const hasSamplesReady = !!evaluatingState && evaluatingState.samples.length > 0;
   const showMiddlePanel = hasSamplesReady && isMdUp;
+  const showIdleHero = !sessionId && displayMessages.length === 0 && !taskDescription.trim();
 
   useEffect(() => {
     if (!evaluatingState || evaluatingState.samples.length === 0) return;
@@ -395,7 +406,7 @@ export function AuditFlowDemo() {
       >
         {/* Chat column */}
         <div
-          className={`flex flex-col overflow-hidden ${
+          className={`flex flex-col overflow-hidden transition-[width,flex-basis] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             showMiddlePanel
               ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0"
               : hasSession
@@ -405,14 +416,7 @@ export function AuditFlowDemo() {
         >
           <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
             <div className="mx-auto max-w-2xl space-y-6">
-              {!sessionId && (
-                <div>
-                  <OrchestratorLabel />
-                  <p className="text-xs leading-relaxed text-zinc-500">
-                    Ready. Describe a task to start the auction pipeline.
-                  </p>
-                </div>
-              )}
+              {showIdleHero && <IdleHero onPickPrompt={handlePickPrompt} />}
 
               {(() => {
                 const nodes: React.ReactNode[] = [];
@@ -470,12 +474,16 @@ export function AuditFlowDemo() {
             onSubmit={handleSubmit}
             submitError={submitError}
             placeholder={hasPendingQuestion ? "Reply to the agent..." : undefined}
+            inputRef={taskInputRef}
           />
         </div>
 
         {/* Middle detail panel */}
         {showMiddlePanel && (
-          <div ref={samplePanelRef} className="hidden min-w-0 flex-1 md:block">
+          <div
+            ref={samplePanelRef}
+            className="hidden min-w-0 flex-1 md:block motion-safe:animate-sample-panel-pullout"
+          >
             <div className="h-full">
               <AgentConfirmPanel
                 samples={evaluatingState?.samples ?? []}
@@ -531,9 +539,7 @@ export function AuditFlowDemo() {
                 countdownSeconds={countdownSeconds}
               />
             ) : (
-              <div className="flex h-full items-center justify-center px-4 text-center font-mono text-[11px] text-zinc-400">
-                EXECUTION_FLOW_IDLE
-              </div>
+              <ExecutionFlowIdle />
             )}
           </div>
         )}
