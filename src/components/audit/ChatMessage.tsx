@@ -58,6 +58,48 @@ export function BackendMessage({
   isPending,
   onApprove,
 }: BackendMessageProps) {
+  // Tool calls render as compact action pills, not full chat bubbles
+  if (message.kind === "toolCall") {
+    return (
+      <div
+        key={message.id}
+        className="flex items-center gap-2 pl-8 animate-in fade-in duration-200"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-zinc-300" />
+        <span
+          className="text-[11px] text-zinc-400"
+          dangerouslySetInnerHTML={{ __html: boldify(message.text) }}
+        />
+      </div>
+    );
+  }
+
+  // Score canvas — full width cards
+  if (message.kind === "scoreCanvas" && message.samples && message.samples.length > 0) {
+    return (
+      <div
+        key={message.id}
+        className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300"
+      >
+        <Avatar />
+        <div className="max-w-[85%] space-y-2">
+          {message.samples.map((sample) => (
+            <ScoreCard
+              key={sample.id}
+              sample={sample}
+              canApprove={canApprove}
+              isPending={isPending}
+              onApprove={onApprove}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Regular text message
+  if (!message.text) return null;
+
   return (
     <div
       key={message.id}
@@ -65,23 +107,19 @@ export function BackendMessage({
     >
       <Avatar />
       <div className="max-w-[85%] rounded-2xl bg-zinc-100 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-800">
-        {message.text && (
-          <p
-            className="whitespace-pre-wrap [&>strong]:font-semibold"
-            dangerouslySetInnerHTML={{ __html: boldify(message.text) }}
-          />
-        )}
-
-        {message.kind === "scoreCanvas" && message.samples && message.samples.length > 0 && (
-          <div className="mt-2 space-y-2">
-            {message.samples.map((sample) => (
-              <ScoreCard
-                key={sample.id}
-                sample={sample}
-                canApprove={canApprove}
-                isPending={isPending}
-                onApprove={onApprove}
-              />
+        <p
+          className="whitespace-pre-wrap [&>strong]:font-semibold"
+          dangerouslySetInnerHTML={{ __html: boldify(message.text) }}
+        />
+        {message.options && message.options.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {message.options.map((opt) => (
+              <span
+                key={opt}
+                className="rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-[11px] font-medium text-zinc-600"
+              >
+                {opt}
+              </span>
             ))}
           </div>
         )}

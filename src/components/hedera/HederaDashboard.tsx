@@ -265,9 +265,12 @@ export function HederaDashboard() {
         ) : (
           <div className="space-y-2">
             {messages.map((msg, i) => {
-              const evt = msg.content;
-              const badge = eventColor[evt.t] ?? "bg-zinc-100 text-zinc-600";
-              const ts = new Date(evt.ts).toLocaleString();
+              // Agent-generated HCS messages may not match the strict type
+              const evt = msg.content as Record<string, unknown>;
+              const eventType = (evt.t ?? evt.event ?? "UNKNOWN") as string;
+              const badge = eventColor[eventType] ?? "bg-zinc-100 text-zinc-600";
+              const ts = evt.ts ? new Date(evt.ts as number).toLocaleString() : "";
+              const detail = (evt.d ?? evt.data ?? {}) as Record<string, unknown>;
               return (
                 <div
                   key={`${msg.sequenceNumber}-${i}`}
@@ -278,9 +281,9 @@ export function HederaDashboard() {
                       #{msg.sequenceNumber}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge}`}>
-                      {evt.t}
+                      {eventType}
                     </span>
-                    <span className="text-[11px] text-zinc-400">{ts}</span>
+                    {ts && <span className="text-[11px] text-zinc-400">{ts}</span>}
                     <a
                       href={`${HASHSCAN}/topic/${topicId}?p=1&k=${msg.sequenceNumber}`}
                       target="_blank"
@@ -291,20 +294,22 @@ export function HederaDashboard() {
                     </a>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600">
-                    <span>
-                      <span className="text-zinc-400">task:</span>{" "}
-                      <span className="font-mono">{evt.taskId}</span>
-                    </span>
-                    {evt.agentId && (
+                    {typeof evt.taskId === "string" && (
+                      <span>
+                        <span className="text-zinc-400">task:</span>{" "}
+                        <span className="font-mono">{evt.taskId}</span>
+                      </span>
+                    )}
+                    {typeof evt.agentId === "string" && (
                       <span>
                         <span className="text-zinc-400">agent:</span>{" "}
                         <span className="font-mono">{evt.agentId}</span>
                       </span>
                     )}
                   </div>
-                  {evt.d && Object.keys(evt.d).length > 0 && (
+                  {Object.keys(detail).length > 0 && (
                     <pre className="mt-1.5 overflow-x-auto rounded-md bg-zinc-50 p-2 text-[11px] text-zinc-500">
-                      {JSON.stringify(evt.d, null, 2)}
+                      {JSON.stringify(detail, null, 2)}
                     </pre>
                   )}
                 </div>
