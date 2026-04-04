@@ -103,16 +103,23 @@ export function ExecutionFlow({ state, countdownSeconds }: ExecutionFlowProps) {
             {bids.map((bid) => (
               <div
                 key={bid.id}
-                className="flex items-center justify-between rounded border border-zinc-200 bg-white px-2.5 py-1.5"
+                className="rounded border border-zinc-200 bg-white px-2.5 py-2"
               >
-                <div>
-                  <span className="font-semibold text-zinc-800">{bid.agentName}</span>
-                  <span className="ml-1 text-zinc-400">({bid.model})</span>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-zinc-800">{bid.agentName}</p>
+                  <p className="truncate text-[10px] text-zinc-400">{bid.model}</p>
                 </div>
-                <div className="flex items-center gap-3 text-zinc-500">
-                  <span>${bid.quoteUsd.toFixed(2)}</span>
-                  <span>{bid.etaMinutes}min</span>
-                  <span className="text-emerald-600">{bid.reputation.toFixed(2)}</span>
+
+                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
+                    Price ${bid.quoteUsd.toFixed(2)}
+                  </span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
+                    ETA {bid.etaMinutes}m
+                  </span>
+                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                    Reputation {Math.round(bid.reputation * 100)}%
+                  </span>
                 </div>
               </div>
             ))}
