@@ -147,7 +147,6 @@ export function AuditFlowDemo() {
                 totalBudgetUsd={controller.session.input.budgetUsd}
                 usedBudgetUsd={controller.usedBudget}
                 files={controller.fileSamples}
-                bids={controller.fileBids}
                 selectedAgentId={controller.selectedAgentId}
                 onPreviewFile={controller.handleSelectSample}
               />

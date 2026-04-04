@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentBid, AuditSessionState, SampleEvaluation } from "@/types/audit";
+import type { AuditSessionState, SampleEvaluation } from "@/types/audit";
 
 type Step = {
   id: string;
@@ -42,7 +42,6 @@ type ExecutionFlowProps = {
   totalBudgetUsd: number;
   usedBudgetUsd: number;
   files?: SampleEvaluation[];
-  bids?: AgentBid[];
   selectedAgentId?: string | null;
   onPreviewFile?: (agentId: string) => void;
 };
@@ -58,19 +57,10 @@ export function ExecutionFlow({
   totalBudgetUsd,
   usedBudgetUsd,
   files = [],
-  bids = [],
   selectedAgentId = null,
   onPreviewFile,
 }: ExecutionFlowProps) {
   const steps = stepsForStage(state.stage);
-
-  const stateBids: AgentBid[] =
-    state.stage === "bidding"
-      ? state.visibleBids
-      : state.stage === "evaluating"
-        ? state.bids
-        : [];
-  const marketBids = stateBids.length > 0 ? stateBids : bids;
 
   const stateSamples: SampleEvaluation[] = state.stage === "evaluating" ? state.samples : [];
   const evaluatedSamples = stateSamples.length > 0 ? stateSamples : files;
@@ -166,48 +156,6 @@ export function ExecutionFlow({
           ))}
         </ol>
       </div>
-
-      {marketBids.length > 0 && (
-        <div className="mb-6">
-          <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-            Auction_Market
-          </p>
-          <div className="space-y-1.5">
-            {marketBids.map((bid) => (
-              <div key={bid.id} className="rounded border border-zinc-200 bg-white px-2.5 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-zinc-800">{bid.agentName}</p>
-                    <p className="truncate text-[10px] text-zinc-400">{bid.model}</p>
-                  </div>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] ${
-                      bid.verified ? "bg-sky-50 text-sky-700" : "bg-zinc-100 text-zinc-500"
-                    }`}
-                  >
-                    {bid.verified ? "Verified" : "Unverified"}
-                  </span>
-                </div>
-
-                <p className="mt-1.5 line-clamp-2 text-[10px] text-zinc-600">{bid.bidLine}</p>
-
-                <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
-                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
-                    Trial ${bid.trialQuoteUsd.toFixed(2)}
-                  </span>
-                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">
-                    Quote ${bid.quoteUsd.toFixed(2)}
-                  </span>
-                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-600">ETA {bid.etaMinutes}m</span>
-                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
-                    Reputation {Math.round(bid.reputation * 100)}%
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="mb-6">
         <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Files</p>

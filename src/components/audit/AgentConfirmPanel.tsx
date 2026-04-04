@@ -152,12 +152,12 @@ export function AgentConfirmPanel({
 
   const containerClass =
     layout === "main"
-      ? "flex h-full min-w-0 flex-1 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-6 py-6 xl:px-8"
-      : "flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 py-6 xl:w-80";
+      ? "flex h-full min-w-0 flex-1 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-6 pt-6 pb-0 xl:px-8"
+      : "flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 pt-6 pb-0 xl:w-80";
   const stickyFooterClass =
     layout === "main"
-      ? "sticky bottom-0 -mx-6 mt-auto border-t border-zinc-200 bg-white/95 px-6 pt-4 pb-6 backdrop-blur xl:-mx-8 xl:px-8"
-      : "sticky bottom-0 -mx-5 mt-auto border-t border-zinc-200 bg-white/95 px-5 pt-4 pb-6 backdrop-blur";
+      ? "sticky -bottom-px z-10 -mx-6 mt-auto border-t border-zinc-200 bg-white px-6 pt-4 pb-6 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] xl:-mx-8 xl:px-8"
+      : "sticky -bottom-px z-10 -mx-5 mt-auto border-t border-zinc-200 bg-white px-5 pt-4 pb-6 shadow-[0_-8px_20px_rgba(15,23,42,0.08)]";
 
   return (
     <div className={containerClass}>
@@ -447,7 +447,7 @@ export function AgentConfirmPanel({
             type="button"
             onClick={() => onApprove(selectedSample)}
             disabled={isPending}
-            className="w-full rounded-md bg-emerald-500 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-45"
+            className="w-full rounded-md bg-emerald-500 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isPending
               ? "Verifying..."
