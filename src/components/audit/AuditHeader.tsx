@@ -1,29 +1,5 @@
-import type { AuditSessionState } from "@/types/audit";
-
-const stepLabels = ["Intent", "Live Bids", "Quality Gate", "Delivery"];
-
-const stageToStepIndex: Record<AuditSessionState["stage"], number> = {
-  agentic: 1,
-  bidding: 1,
-  evaluating: 2,
-  delivered: 3,
-  error: 0,
-};
-
-const stageBadgeLabel: Record<AuditSessionState["stage"], string> = {
-  agentic: "Agent Working",
-  bidding: "Auction Running",
-  evaluating: "Awaiting Approval",
-  delivered: "Delivered",
-  error: "Needs Fix",
-};
-
-function formatUsd(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
-
 type AuditHeaderProps = {
-  stage: AuditSessionState["stage"] | null;
+  stage: string | null;
   usedBudget: number;
   totalBudget: number;
   countdownSeconds: number;
@@ -31,6 +7,10 @@ type AuditHeaderProps = {
   devMode: boolean;
   onToggleDevMode: () => void;
 };
+
+function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
 
 export function AuditHeader({
   stage,
@@ -41,79 +21,84 @@ export function AuditHeader({
   devMode,
   onToggleDevMode,
 }: AuditHeaderProps) {
-  const activeStepIndex = stage ? stageToStepIndex[stage] : 0;
-  const spendRatio =
-    totalBudget > 0 ? Math.min((usedBudget / totalBudget) * 100, 100) : 0;
-
   return (
-    <header className="flex flex-wrap items-center gap-3 border-b border-zinc-100 px-4 py-3 md:px-6">
-      <ol className="flex gap-1.5">
-        {stepLabels.map((label, index) => {
-          const isActive = activeStepIndex === index;
-          const isComplete = activeStepIndex > index;
-          return (
-            <li
-              key={label}
-              className={`rounded-full px-2.5 py-1 text-[11px] font-medium leading-none ${
-                isActive
-                  ? "bg-zinc-900 text-white"
-                  : isComplete
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-zinc-100 text-zinc-400"
-              }`}
-            >
-              {label}
-            </li>
-          );
-        })}
-      </ol>
-
-      <span className="mx-1 hidden h-4 w-px bg-zinc-200 sm:block" />
-
-      <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-        <span className="font-medium text-zinc-700">Budget</span>
-        <div className="h-1.5 w-16 rounded-full bg-zinc-200">
-          <div
-            style={{ width: `${spendRatio}%` }}
-            className="h-1.5 rounded-full bg-zinc-900 transition-all"
-          />
-        </div>
-        <span className="font-mono">
-          {formatUsd(usedBudget)}/{formatUsd(totalBudget)}
+    <header className="flex items-center border-b border-zinc-100 px-5 py-3">
+      {/* Logo */}
+      <div className="flex items-center gap-2 min-w-0">
+        <svg
+          className="h-5 w-5 flex-shrink-0 text-emerald-500"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path d="M13 2L4.09 12.97H11L10 22L20.91 11H14L13 2Z" />
+        </svg>
+        <span className="font-bold tracking-widest text-sm text-zinc-900 uppercase">
+          Agentick
         </span>
       </div>
 
-      {stage === "bidding" && (
-        <>
-          <span className="mx-1 hidden h-4 w-px bg-zinc-200 sm:block" />
-          <span className="font-mono text-[11px] text-zinc-500">{countdownSeconds}s</span>
-        </>
-      )}
+      {/* Center: status */}
+      <div className="flex flex-1 items-center justify-center gap-3">
+        {stage === "bidding" && (
+          <span className="font-mono text-xs text-amber-600">
+            // BIDDING {countdownSeconds}s
+          </span>
+        )}
 
-      <div className="ml-auto flex items-center gap-2">
+        {stage === "evaluating" && (
+          <span className="font-mono text-xs text-blue-600 animate-pulse">
+            // EVALUATING_SAMPLES...
+          </span>
+        )}
+
+        {stage === "delivered" && (
+          <span className="font-mono text-xs text-emerald-600">
+            // TASK_COMPLETE ✓
+          </span>
+        )}
+      </div>
+
+      {/* Right controls */}
+      <div className="flex items-center gap-2">
+        {totalBudget > 0 && (
+          <span className="font-mono text-[11px] text-zinc-400">
+            {formatUsd(usedBudget)}/{formatUsd(totalBudget)}
+          </span>
+        )}
+
         <button
           type="button"
           onClick={onToggleDevMode}
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+          className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border ${
             devMode
-              ? "bg-amber-100 text-amber-700 border border-amber-300"
-              : "bg-zinc-100 text-zinc-400 border border-zinc-200"
+              ? "border-amber-300 bg-amber-50 text-amber-700"
+              : "border-zinc-200 bg-zinc-50 text-zinc-400"
           }`}
         >
-          {devMode ? "Dev Mode" : "Dev"}
+          DEV
         </button>
+
         {stage && (
-          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
-            {stageBadgeLabel[stage]}
-          </span>
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-md border border-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 hover:bg-zinc-50"
+          >
+            RESET
+          </button>
         )}
-        <button
-          type="button"
-          onClick={onReset}
-          className="rounded-md border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-500 hover:bg-zinc-50"
+
+        {/* Audit trail icon button */}
+        <a
+          href="/hedera"
+          className="flex items-center justify-center rounded-md bg-emerald-500 p-1.5 text-white hover:bg-emerald-600"
+          title="Hedera Audit Trail"
         >
-          Reset
-        </button>
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 9h6M9 12h6M9 15h4" />
+          </svg>
+        </a>
       </div>
     </header>
   );

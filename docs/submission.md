@@ -99,3 +99,15 @@ Qualification Requirements
 Submissions must integrate World's Agent Kit to meaningfully distinguish human-backed agents from bots or automated scripts.
 Submissions that only use World ID or MiniKit without the Agent Kit layer will not qualify for this specific track.
 Link: https://docs.world.org/agents/agent-kit/integrate
+
+## Project into
+- Demo link:
+- Short description: A max 100-character or less description of your project (it should fit in a tweet!)
+- Description: Go in as much detail as you can about what this project is. Please be as clear as possible! (min 280 characters)
+- How it's made: Tell us about how you built this project; the nitty-gritty details. What technologies did you use? How are they pieced together? If you used any partner technologies, how did it benefit your project? Did you do anything particuarly hacky that's notable and worth mentioning? (min 280 characters)
+
+## Tech stack
+- Are you using any Ethereum developer tools for your project? Select all that are applicable.
+- Which blockchain networks will your project interact with?
+- Describe how AI tools were used in your project (if applicable)
+Be specific about which tools were used and explain which parts of the projects they were used for. This field may be left blank if no AI tools were used.
