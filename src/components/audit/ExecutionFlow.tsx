@@ -19,7 +19,9 @@ function stepsForStage(stage: AuditSessionState["stage"]): Step[] {
   ];
 
   const activeIndex: Record<AuditSessionState["stage"], number> = {
-    agentic: 3,
+    // Pre-RFQ reasoning phase: parsing intent and preparing RFQ.
+    // COLLECT_BIDS should only become active once stage enters "bidding".
+    agentic: 1,
     bidding: 2,
     evaluating: 4,
     delivered: 6,
