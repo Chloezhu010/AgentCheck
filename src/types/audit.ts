@@ -1,3 +1,5 @@
+import type { AgentTaskKind } from "@/types/agent";
+
 // Primitives
 
 export type FlowStage = "idle" | "agentic" | "bidding" | "evaluating" | "delivered" | "error";
@@ -31,6 +33,30 @@ export type SampleEvaluation = {
   sampleTitle: string;
   summary: string;
   imageDataUrl?: string;
+  taskKind?: AgentTaskKind;
+  persona?: SamplePersonaProfile;
+  plan?: SampleExecutionPlan;
+  scoreBreakdown?: SampleScoreBreakdown;
+};
+
+export type SamplePersonaProfile = {
+  personality: string;
+  taste: string;
+  skills: string[];
+};
+
+export type SampleExecutionPlan = {
+  concept: string;
+  samplePlan: string;
+  deliverPlan: string;
+  qualityRisk: string;
+  panelFlow: string[];
+};
+
+export type SampleScoreBreakdown = {
+  quality: number;
+  price: number;
+  speed: number;
 };
 
 export type AuditEvent = {
@@ -45,6 +71,16 @@ export type DeliveryReport = {
   title: string;
   highlights: string[];
   markdownPreview: string;
+  taskKind?: AgentTaskKind;
+  imageDataUrl?: string;
+  comicFrames?: DeliveryComicFrame[];
+  generatorNotes?: string;
+};
+
+export type DeliveryComicFrame = {
+  panelNumber: number;
+  beat: string;
+  imageDataUrl: string;
 };
 
 // Orchestrator-generated messages (backend owns the narrative)
