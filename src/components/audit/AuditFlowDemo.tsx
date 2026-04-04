@@ -267,7 +267,7 @@ export function AuditFlowDemo() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col rounded-2xl border border-zinc-200 bg-white shadow-sm">
+    <div className="flex h-screen flex-col bg-white">
       <AuditHeader
         stage={stage}
         usedBudget={usedBudget}
