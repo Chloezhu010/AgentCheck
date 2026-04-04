@@ -17,8 +17,6 @@ export function AuditFlowDemo() {
     <div className="flex h-screen flex-col bg-white">
       <AuditHeader
         stage={controller.stage}
-        usedBudget={controller.usedBudget}
-        totalBudget={controller.totalBudget}
         countdownSeconds={controller.countdownSeconds}
         onReset={controller.handleReset}
         devMode={controller.devMode}
@@ -113,6 +111,9 @@ export function AuditFlowDemo() {
               <ExecutionFlow
                 state={controller.session.state}
                 countdownSeconds={controller.countdownSeconds}
+                taskDescription={controller.session.input.taskDescription}
+                totalBudgetUsd={controller.session.input.budgetUsd}
+                usedBudgetUsd={controller.usedBudget}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-4 text-center font-mono text-[11px] text-zinc-400">
