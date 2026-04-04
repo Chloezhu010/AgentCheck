@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { normalizeWeights } from "@/lib/audit-demo-data";
+import { useWorldIdGate, WorldIdModal } from "@/components/audit/WorldIdGate";
+import { WORLD_ACTIONS, worldScope } from "@/lib/world-id";
 import type {
   AuditSession,
   AuditSessionState,
@@ -36,9 +38,14 @@ const weightControls: Array<{ key: keyof IntentWeights; label: string }> = [
   { key: "speed", label: "Speed" },
 ];
 
-type DisplayMessage =
-  | { source: "user"; id: string; text: string }
-  | { source: "backend"; msg: OrchestratorMessage };
+type LocalMessage = {
+  source: "assistant" | "user";
+  id: string;
+  text: string;
+  ts: number;
+};
+
+type DisplayMessage = LocalMessage | { source: "backend"; msg: OrchestratorMessage };
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -52,10 +59,11 @@ export function AuditFlowDemo() {
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<AuditSession | null>(null);
-  const [userMessages, setUserMessages] = useState<Array<{ id: string; text: string; ts: number }>>([]);
+  const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, startSubmit] = useTransition();
   const [isPending, startApprove] = useTransition();
+  const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const prevMsgCount = useRef(0);
@@ -86,26 +94,20 @@ export function AuditFlowDemo() {
     [normalizedWeights],
   );
 
-  // Merge user messages + backend messages chronologically
+  // Merge local UI messages + backend messages chronologically
   const displayMessages: DisplayMessage[] = useMemo(() => {
     const backendMsgs: DisplayMessage[] = (session?.messages ?? []).map((msg) => ({
       source: "backend" as const,
       msg,
     }));
-    const userMsgs: DisplayMessage[] = userMessages.map((u) => ({
-      source: "user" as const,
-      id: u.id,
-      text: u.text,
-    }));
 
-    // Interleave: user messages appear before backend messages that arrived after them
     const all: Array<DisplayMessage & { ts: number }> = [
       ...backendMsgs.map((d) => ({ ...d, ts: d.source === "backend" ? d.msg.ts : 0 })),
-      ...userMsgs.map((d, i) => ({ ...d, ts: userMessages[i].ts })),
+      ...localMessages.map((msg) => ({ ...msg, ts: msg.ts })),
     ];
     all.sort((a, b) => a.ts - b.ts);
     return all;
-  }, [session?.messages, userMessages]);
+  }, [localMessages, session?.messages]);
 
   // Show typing indicator when new backend messages might be arriving
   const isTyping =
@@ -150,12 +152,44 @@ export function AuditFlowDemo() {
     const userTask = taskDescription;
     setTaskDescription("");
 
-    setUserMessages((prev) => [
+    const timestamp = Date.now();
+
+    setLocalMessages((prev) => [
       ...prev,
-      { id: `user-${Date.now()}`, text: userTask, ts: Date.now() },
+      { source: "user", id: `user-${timestamp}`, text: userTask, ts: timestamp },
     ]);
 
     startSubmit(async () => {
+      // Gate 1: prove human identity before starting the auction
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          source: "assistant",
+          id: `assistant-${Date.now()}`,
+          text: "Verifying your identity with World ID before opening the auction...",
+          ts: Date.now(),
+        },
+      ]);
+      try {
+        await worldId.trigger({
+          action: WORLD_ACTIONS.CREATE_AUDIT,
+          scope: worldScope.draft(crypto.randomUUID()),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "World ID verification failed";
+        setSubmitError(message);
+        setLocalMessages((prev) => [
+          ...prev,
+          {
+            source: "assistant",
+            id: `assistant-${Date.now()}`,
+            text: `Identity check failed: ${message}`,
+            ts: Date.now(),
+          },
+        ]);
+        return;
+      }
+
       const res = await fetch("/api/audit/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,12 +225,46 @@ export function AuditFlowDemo() {
   function handleApprove(sample: SampleEvaluation) {
     if (stage !== "evaluating" || !sessionId) return;
 
-    setUserMessages((prev) => [
+    setLocalMessages((prev) => [
       ...prev,
-      { id: `user-${Date.now()}`, text: `Approve ${sample.agentName}`, ts: Date.now() },
+      {
+        source: "user",
+        id: `user-${Date.now()}`,
+        text: `Approve ${sample.agentName}`,
+        ts: Date.now(),
+      },
     ]);
 
     startApprove(async () => {
+      // Gate 2: prove human identity before releasing payment
+      setLocalMessages((prev) => [
+        ...prev,
+        {
+          source: "assistant",
+          id: `assistant-${Date.now()}`,
+          text: "Verifying your identity with World ID before releasing payment...",
+          ts: Date.now(),
+        },
+      ]);
+      try {
+        await worldId.trigger({
+          action: WORLD_ACTIONS.APPROVE_PAYMENT,
+          scope: worldScope.audit(sessionId),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "World ID verification failed";
+        setLocalMessages((prev) => [
+          ...prev,
+          {
+            source: "assistant",
+            id: `assistant-${Date.now()}`,
+            text: `Identity check failed: ${message}`,
+            ts: Date.now(),
+          },
+        ]);
+        return;
+      }
+
       const res = await fetch(`/api/audit/session/${sessionId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,7 +281,7 @@ export function AuditFlowDemo() {
   function handleReset() {
     setSessionId(null);
     setSession(null);
-    setUserMessages([]);
+    setLocalMessages([]);
     setSubmitError(null);
     prevMsgCount.current = 0;
   }
@@ -313,6 +381,27 @@ export function AuditFlowDemo() {
               );
             }
 
+            if (dm.source === "assistant") {
+              return (
+                <div
+                  key={dm.id}
+                  className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300"
+                >
+                  <div className="mr-2 mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-bold text-white">
+                    A
+                  </div>
+                  <div className="max-w-[85%] rounded-2xl bg-zinc-100 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-800">
+                    <p
+                      className="whitespace-pre-wrap [&>strong]:font-semibold"
+                      dangerouslySetInnerHTML={{
+                        __html: dm.text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"),
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            }
+
             const message = dm.msg;
             return (
               <div
@@ -378,7 +467,7 @@ export function AuditFlowDemo() {
                               disabled={stage !== "evaluating" || isPending}
                               className="mt-2.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
                             >
-                              {isPending ? "Approving..." : `Approve ${sample.agentName}`}
+                              {isPending ? "Verifying & Approving..." : `Approve ${sample.agentName}`}
                             </button>
                           </section>
                         );
@@ -476,7 +565,7 @@ export function AuditFlowDemo() {
                 disabled={isFlowRunning || isSubmitting || !taskDescription.trim()}
                 className="rounded-lg bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-40"
               >
-                {isSubmitting ? "Starting..." : "Send"}
+                {isSubmitting ? "Verifying..." : "Send"}
               </button>
             </div>
           </div>
@@ -521,6 +610,9 @@ export function AuditFlowDemo() {
           </p>
         )}
       </div>
+
+      {/* World ID QR modal — renders the IDKit widget overlay */}
+      <WorldIdModal gate={worldId} />
     </div>
   );
 }
