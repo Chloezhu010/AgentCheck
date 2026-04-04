@@ -10,12 +10,12 @@ type Step = {
 
 function stepsForStage(stage: AuditSessionState["stage"]): Step[] {
   const all: Array<{ id: string; label: string }> = [
-    { id: "PARSE_INTENT", label: "PARSE_INTENT" },
-    { id: "OPEN_RFQ", label: "OPEN_RFQ" },
+    { id: "UNDERSTAND_TASK", label: "UNDERSTAND_TASK" },
+    { id: "PLAN_SUBAGENTS", label: "PLAN_SUBAGENTS" },
     { id: "COLLECT_BIDS", label: "COLLECT_BIDS" },
-    { id: "RUN_SAMPLES", label: "RUN_SAMPLES" },
-    { id: "CONFIRM_AGENT", label: "CONFIRM_AGENT" },
-    { id: "FINALIZE", label: "FINALIZE_REPORT" },
+    { id: "RUN_SAMPLES", label: "RUN_SAMPLE_IMAGE" },
+    { id: "CONFIRM_AGENT", label: "SCORE_AND_SELECT" },
+    { id: "FINALIZE", label: "DELIVER_FINAL" },
   ];
 
   const activeIndex: Record<AuditSessionState["stage"], number> = {
@@ -94,7 +94,7 @@ export function ExecutionFlow({
       {/* Steps */}
       <div className="mb-6">
         <p className="mb-3 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-          Execution_Flow
+          Agent_Lifecycle
         </p>
         <ol className="space-y-2">
           {steps.map((step, i) => (
@@ -176,21 +176,32 @@ export function ExecutionFlow({
             {samples.map((s, i) => (
               <div
                 key={s.id}
-                className="flex items-center gap-2 rounded border border-zinc-200 bg-white px-2.5 py-1.5"
+                className="rounded border border-zinc-200 bg-white px-2.5 py-1.5"
               >
-                <span className="text-zinc-400">{String(i + 1).padStart(2, "0")}</span>
-                <span className="flex-1 font-semibold text-zinc-800">{s.agentName}</span>
                 <div className="flex items-center gap-2">
-                  <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-200">
-                    <div
-                      style={{ width: `${Math.round(s.score * 100)}%` }}
-                      className="h-1 rounded-full bg-emerald-400 transition-all duration-700"
-                    />
+                  <span className="text-zinc-400">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="flex-1 font-semibold text-zinc-800">{s.agentName}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-200">
+                      <div
+                        style={{ width: `${Math.round(s.score * 100)}%` }}
+                        className="h-1 rounded-full bg-emerald-400 transition-all duration-700"
+                      />
+                    </div>
+                    <span className="w-8 text-right text-emerald-600">
+                      {s.score > 0 ? Math.round(s.score * 100) : "–"}
+                    </span>
                   </div>
-                  <span className="w-8 text-right text-emerald-600">
-                    {s.score > 0 ? Math.round(s.score * 100) : "–"}
-                  </span>
                 </div>
+                {s.taskKind === "four-panel-comic" && (
+                  <p className="mt-1 text-[10px] text-sky-700">Keyframe sample only (1 image)</p>
+                )}
+                {s.scoreBreakdown && (
+                  <p className="mt-1 text-[10px] text-zinc-500">
+                    Q {Math.round(s.scoreBreakdown.quality * 100)} / P {Math.round(s.scoreBreakdown.price * 100)} /
+                    S {Math.round(s.scoreBreakdown.speed * 100)}
+                  </p>
+                )}
               </div>
             ))}
           </div>

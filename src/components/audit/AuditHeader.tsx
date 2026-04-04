@@ -12,7 +12,7 @@ function getStageBadge(stage: string | null, countdownSeconds: number): string |
   }
 
   if (stage === "evaluating") {
-    return "Evaluating samples";
+    return "Scoring agents";
   }
 
   if (stage === "delivered") {
