@@ -148,15 +148,16 @@ export function AgentConfirmPanel({
   if (!selectedSample) return null;
 
   const scorePercent = Math.round(selectedSample.score * 100);
+  const isComicTask = selectedSample.taskKind === "four-panel-comic";
 
   const containerClass =
     layout === "main"
-      ? "flex h-full min-w-0 flex-1 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-6 py-6 xl:px-8"
-      : "flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 py-6 xl:w-80";
+      ? "flex h-full min-w-0 flex-1 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-6 pt-6 pb-0 xl:px-8"
+      : "flex h-full w-72 flex-shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white px-5 pt-6 pb-0 xl:w-80";
   const stickyFooterClass =
     layout === "main"
-      ? "sticky bottom-0 -mx-6 mt-auto border-t border-zinc-200 bg-white/95 px-6 pt-4 pb-6 backdrop-blur xl:-mx-8 xl:px-8"
-      : "sticky bottom-0 -mx-5 mt-auto border-t border-zinc-200 bg-white/95 px-5 pt-4 pb-6 backdrop-blur";
+      ? "sticky -bottom-px z-10 -mx-6 mt-auto border-t border-zinc-200 bg-white px-6 pt-4 pb-6 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] xl:-mx-8 xl:px-8"
+      : "sticky -bottom-px z-10 -mx-5 mt-auto border-t border-zinc-200 bg-white px-5 pt-4 pb-6 shadow-[0_-8px_20px_rgba(15,23,42,0.08)]";
 
   return (
     <div className={containerClass}>
@@ -165,7 +166,9 @@ export function AgentConfirmPanel({
           Sample Area
         </p>
         <p className="mt-1 text-xs text-zinc-500">
-          {readOnly ? "Viewing selected sample details." : "Review the selected sample and confirm."}
+          {readOnly
+            ? "Viewing selected sample details."
+            : "Review style, execution plan, and quality before confirmation."}
         </p>
       </div>
 
@@ -254,6 +257,9 @@ export function AgentConfirmPanel({
                 <p className={`text-[10px] ${isSelected ? "text-white/85" : "text-zinc-500"}`}>
                   {scorePercent > 0 ? `${scorePercent}/100` : "Scoring..."}
                 </p>
+                <p className={`line-clamp-1 text-[9px] ${isSelected ? "text-white/80" : "text-zinc-400"}`}>
+                  {sample.sampleTitle}
+                </p>
               </button>
             );
           })}
@@ -273,12 +279,19 @@ export function AgentConfirmPanel({
                 {selectedSample.agentName}
               </span>
             </div>
+            <p className="mt-1 text-[10px] text-zinc-500">{selectedSample.sampleTitle}</p>
             <p className="mt-0.5 font-mono text-[10px] text-zinc-400">{selectedSample.model}</p>
           </div>
           <span className="font-mono text-sm font-bold text-zinc-700">
             {scorePercent > 0 ? scorePercent : "–"}
           </span>
         </div>
+
+        {isComicTask && (
+          <div className="mt-2 inline-flex rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">
+            Keyframe Sample (1 image)
+          </div>
+        )}
 
         {scorePercent > 0 && (
           <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-zinc-200">
@@ -309,11 +322,86 @@ export function AgentConfirmPanel({
           )}
         </div>
 
+        {isComicTask && (
+          <p className="mt-2 text-[11px] text-sky-700">
+            Sample phase is one representative frame. Delivery phase should output a full 4-panel comic.
+          </p>
+        )}
+
         {selectedBid && (
           <div className="mt-2 flex gap-3 text-[11px] text-zinc-500">
             <span>${selectedBid.quoteUsd.toFixed(2)}</span>
             <span>{selectedBid.etaMinutes}min</span>
             <span className="text-emerald-700">{Math.round(selectedBid.reputation * 100)}% rep</span>
+          </div>
+        )}
+
+        {selectedSample.scoreBreakdown && (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+            <p className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+              Judge Breakdown
+            </p>
+            <div className="mt-2 space-y-1.5">
+              <MetricBar label="Quality" value={selectedSample.scoreBreakdown.quality} />
+              <MetricBar label="Price" value={selectedSample.scoreBreakdown.price} />
+              <MetricBar label="Speed" value={selectedSample.scoreBreakdown.speed} />
+            </div>
+          </div>
+        )}
+
+        {selectedSample.persona && (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-white p-2">
+            <p className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+              Agent Profile
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Personality:</span> {selectedSample.persona.personality}
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Taste:</span> {selectedSample.persona.taste}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {selectedSample.persona.skills.slice(0, 4).map((skill) => (
+                <span
+                  key={skill}
+                  className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedSample.plan && (
+          <div className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 p-2">
+            <p className="text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">
+              Execution Plan
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Concept:</span> {selectedSample.plan.concept}
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Sample:</span> {selectedSample.plan.samplePlan}
+            </p>
+            <p className="mt-1 text-[11px] text-zinc-700">
+              <span className="font-semibold">Deliver:</span> {selectedSample.plan.deliverPlan}
+            </p>
+            <p className="mt-1 text-[11px] text-amber-700">
+              <span className="font-semibold">Risk:</span> {selectedSample.plan.qualityRisk}
+            </p>
+            {selectedSample.plan.panelFlow.length > 0 && (
+              <div className="mt-2 rounded border border-zinc-200 bg-white p-2">
+                <p className="text-[10px] font-semibold text-zinc-500 uppercase">Panel Flow</p>
+                <div className="mt-1 space-y-0.5">
+                  {selectedSample.plan.panelFlow.map((step, idx) => (
+                    <p key={`${idx}-${step}`} className="text-[11px] text-zinc-700">
+                      Panel {idx + 1}: {step}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -359,7 +447,7 @@ export function AgentConfirmPanel({
             type="button"
             onClick={() => onApprove(selectedSample)}
             disabled={isPending}
-            className="w-full rounded-md bg-emerald-500 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-45"
+            className="w-full rounded-md bg-emerald-500 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {isPending
               ? "Verifying..."
@@ -375,6 +463,19 @@ export function AgentConfirmPanel({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function MetricBar({ label, value }: { label: string; value: number }) {
+  const percent = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-12 text-[10px] text-zinc-500">{label}</span>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200">
+        <div style={{ width: `${percent}%` }} className="h-1.5 rounded-full bg-emerald-400" />
+      </div>
+      <span className="w-8 text-right text-[10px] text-zinc-600">{percent}</span>
     </div>
   );
 }

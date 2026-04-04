@@ -15,6 +15,10 @@ const FLOW_PANEL_WIDTH_CLASS = "lg:pr-60 xl:pr-72";
 
 export function AuditFlowDemo() {
   const controller = useAuditFlowController();
+  const delivery =
+    controller.session?.state.stage === "delivered"
+      ? controller.session.state.delivery
+      : null;
   const taskInputRef = useRef<HTMLInputElement>(null);
 
   function handlePickPrompt(prompt: string) {
@@ -53,6 +57,7 @@ export function AuditFlowDemo() {
               sessionId={controller.sessionId}
               displayMessages={controller.displayMessages}
               stage={controller.stage}
+              delivery={delivery}
               auditTrail={controller.session?.auditTrail ?? []}
               isTyping={controller.isTyping}
               chatEndRef={controller.chatEndRef}

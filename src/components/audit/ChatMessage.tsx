@@ -84,6 +84,10 @@ export function BackendMessage({
                         <span className="ml-2 text-zinc-500">
                           {scorePercent > 0 ? `${scorePercent}/100` : "Scoring..."}
                         </span>
+                        <p className="mt-0.5 text-zinc-500">{sample.sampleTitle}</p>
+                        {sample.taskKind === "four-panel-comic" && (
+                          <p className="mt-0.5 text-sky-700">Keyframe sample (1 image). Final delivery is full 4-panel.</p>
+                        )}
                         <p className="mt-0.5 line-clamp-2 text-zinc-500">{sample.recommendation}</p>
                       </div>
                     );

@@ -1,6 +1,18 @@
 import { getGeminiClient } from "@/server/agents/gemini-client";
 import type { SampleEvaluation, IntentWeights } from "@/types/audit";
+import { Type } from "@google/genai";
 import type { Content, Part } from "@google/genai";
+
+const TEXT_MODEL = process.env.AGENT_TEXT_MODEL ?? "gemini-3-flash-preview";
+
+type JudgeScore = {
+  agentId: string;
+  score: number;
+  qualityScore: number;
+  priceScore: number;
+  speedScore: number;
+  recommendation: string;
+};
 
 // LLM judge: comparative scoring of samples using Gemini
 export async function llmJudgeScore(
@@ -22,11 +34,11 @@ Scoring criteria weights:
 - Speed/efficiency: ${Math.round(weights.speed * 100)}%
 
 Below are ${samples.length} samples. For each, provide:
-1. A score from 0.00 to 1.00 (weighted by the criteria above)
-2. A one-sentence recommendation explaining your score
-
-Return ONLY valid JSON, no markdown fencing:
-[{"agentId": "...", "score": 0.XX, "recommendation": "..."}]
+- score: number in [0, 1], weighted by the criteria above
+- qualityScore: number in [0, 1]
+- priceScore: number in [0, 1]
+- speedScore: number in [0, 1]
+- recommendation: one concise sentence
 
 Samples:`,
     },
@@ -48,33 +60,104 @@ Samples:`,
   const contents: Content[] = [{ role: "user", parts }];
 
   const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: TEXT_MODEL,
     contents,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          scores: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                agentId: { type: Type.STRING },
+                score: { type: Type.NUMBER },
+                qualityScore: { type: Type.NUMBER },
+                priceScore: { type: Type.NUMBER },
+                speedScore: { type: Type.NUMBER },
+                recommendation: { type: Type.STRING },
+              },
+              required: [
+                "agentId",
+                "score",
+                "qualityScore",
+                "priceScore",
+                "speedScore",
+                "recommendation",
+              ],
+            },
+          },
+        },
+        required: ["scores"],
+      },
+      temperature: 0.2,
+    },
   });
 
-  const text = response.text ?? "";
-  const jsonMatch = text.match(/\[[\s\S]*?\]/);
-  if (!jsonMatch) return samples;
+  const parsedScores = parseScores(response.text);
+  if (!parsedScores) return samples;
+
+  return samples
+    .map((sample) => {
+      const entry = parsedScores.find((s) => s.agentId === sample.agentId);
+      if (!entry) return sample;
+      return {
+        ...sample,
+        score: Math.max(0, Math.min(1, entry.score)),
+        recommendation: entry.recommendation || sample.recommendation,
+        scoreBreakdown: {
+          quality: Math.max(0, Math.min(1, entry.qualityScore)),
+          price: Math.max(0, Math.min(1, entry.priceScore)),
+          speed: Math.max(0, Math.min(1, entry.speedScore)),
+        },
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function parseScores(rawText: string | undefined): JudgeScore[] | null {
+  if (!rawText) return null;
 
   try {
-    const scores = JSON.parse(jsonMatch[0]) as Array<{
-      agentId: string;
-      score: number;
-      recommendation: string;
-    }>;
+    const value = JSON.parse(rawText) as unknown;
+    const rawScores =
+      Array.isArray(value)
+        ? value
+        : typeof value === "object" && value !== null && Array.isArray((value as { scores?: unknown }).scores)
+          ? (value as { scores: unknown[] }).scores
+          : null;
 
-    return samples
-      .map((sample) => {
-        const entry = scores.find((s) => s.agentId === sample.agentId);
-        if (!entry) return sample;
-        return {
-          ...sample,
-          score: Math.max(0, Math.min(1, entry.score)),
-          recommendation: entry.recommendation || sample.recommendation,
-        };
-      })
-      .sort((a, b) => b.score - a.score);
+    if (!rawScores) return null;
+
+    const scores = rawScores.flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const obj = item as Record<string, unknown>;
+      if (
+        typeof obj.agentId !== "string" ||
+        typeof obj.score !== "number" ||
+        typeof obj.qualityScore !== "number" ||
+        typeof obj.priceScore !== "number" ||
+        typeof obj.speedScore !== "number" ||
+        typeof obj.recommendation !== "string"
+      ) {
+        return [];
+      }
+      return [
+        {
+          agentId: obj.agentId,
+          score: obj.score,
+          qualityScore: obj.qualityScore,
+          priceScore: obj.priceScore,
+          speedScore: obj.speedScore,
+          recommendation: obj.recommendation.trim(),
+        } satisfies JudgeScore,
+      ];
+    });
+
+    return scores.length > 0 ? scores : null;
   } catch {
-    return samples;
+    return null;
   }
 }

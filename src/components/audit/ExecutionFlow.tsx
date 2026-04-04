@@ -62,10 +62,14 @@ export function ExecutionFlow({
 }: ExecutionFlowProps) {
   const steps = stepsForStage(state.stage);
 
+  const stateSamples: SampleEvaluation[] = state.stage === "evaluating" ? state.samples : [];
+  const evaluatedSamples = stateSamples.length > 0 ? stateSamples : files;
+  const previewFiles = files.length > 0 ? files : evaluatedSamples;
+
   const remainingBudgetUsd = Math.max(totalBudgetUsd - usedBudgetUsd, 0);
-  const usageRatio =
-    totalBudgetUsd > 0 ? Math.min(Math.max(usedBudgetUsd / totalBudgetUsd, 0), 1) : 0;
-  const leftRatio = totalBudgetUsd > 0 ? Math.min(Math.max(remainingBudgetUsd / totalBudgetUsd, 0), 1) : 0;
+  const usageRatio = totalBudgetUsd > 0 ? Math.min(Math.max(usedBudgetUsd / totalBudgetUsd, 0), 1) : 0;
+  const leftRatio =
+    totalBudgetUsd > 0 ? Math.min(Math.max(remainingBudgetUsd / totalBudgetUsd, 0), 1) : 0;
   const leftPercent = Math.round(leftRatio * 100);
   const usageTextClass =
     usageRatio >= 0.9 ? "text-rose-600" : usageRatio >= 0.6 ? "text-amber-600" : "text-emerald-600";
@@ -82,9 +86,7 @@ export function ExecutionFlow({
           <p className="mb-1 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
             Task_Brief
           </p>
-          <p className="line-clamp-3 leading-relaxed text-zinc-700">
-            {taskDescription}
-          </p>
+          <p className="line-clamp-3 leading-relaxed text-zinc-700">{taskDescription}</p>
 
           <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-2 text-[10px] text-zinc-500">
             <div className="flex items-center justify-between">
@@ -115,7 +117,6 @@ export function ExecutionFlow({
         </div>
       </div>
 
-      {/* Steps */}
       <div className="mb-6">
         <p className="mb-3 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
           Execution_Flow
@@ -156,14 +157,11 @@ export function ExecutionFlow({
         </ol>
       </div>
 
-      {/* Files */}
       <div className="mb-6">
-        <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-          Files
-        </p>
-        {files.length > 0 ? (
+        <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Files</p>
+        {previewFiles.length > 0 ? (
           <div className="space-y-1.5">
-            {files.map((sample, i) => {
+            {previewFiles.map((sample, i) => {
               const scorePercent = Math.round(sample.score * 100);
               const isSelected = selectedAgentId === sample.agentId;
               const canPreview = typeof onPreviewFile === "function";
@@ -198,11 +196,7 @@ export function ExecutionFlow({
                   >
                     {scorePercent > 0 ? `${scorePercent}` : "–"}
                   </span>
-                  <span
-                    className={`text-[10px] font-semibold ${
-                      isSelected ? "text-white" : "text-zinc-600"
-                    }`}
-                  >
+                  <span className={`text-[10px] font-semibold ${isSelected ? "text-white" : "text-zinc-600"}`}>
                     Preview
                   </span>
                 </button>
@@ -220,6 +214,44 @@ export function ExecutionFlow({
           </div>
         )}
       </div>
+
+      {evaluatedSamples.length > 0 && (
+        <div className="mb-6">
+          <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
+            Quality_Evaluations
+          </p>
+          <div className="space-y-1.5">
+            {evaluatedSamples.map((sample, i) => (
+              <div key={sample.id} className="rounded border border-zinc-200 bg-white px-2.5 py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="flex-1 font-semibold text-zinc-800">{sample.agentName}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-200">
+                      <div
+                        style={{ width: `${Math.round(sample.score * 100)}%` }}
+                        className="h-1 rounded-full bg-emerald-400 transition-all duration-700"
+                      />
+                    </div>
+                    <span className="w-8 text-right text-emerald-600">
+                      {sample.score > 0 ? Math.round(sample.score * 100) : "–"}
+                    </span>
+                  </div>
+                </div>
+                {sample.taskKind === "four-panel-comic" && (
+                  <p className="mt-1 text-[10px] text-sky-700">Keyframe sample only (1 image)</p>
+                )}
+                {sample.scoreBreakdown && (
+                  <p className="mt-1 text-[10px] text-zinc-500">
+                    Q {Math.round(sample.scoreBreakdown.quality * 100)} / P {Math.round(sample.scoreBreakdown.price * 100)} /
+                    S {Math.round(sample.scoreBreakdown.speed * 100)}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {state.stage === "delivered" && (
         <div className="mt-auto pt-4">

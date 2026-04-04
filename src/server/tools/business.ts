@@ -38,7 +38,7 @@ export const businessFunctionDeclarations: FunctionDeclaration[] = [
   {
     name: "request_samples",
     description:
-      "Request trial samples from agents. Each agent generates an image sample for the task. Returns sample metadata with scores initialized to 0.",
+      "Request trial samples from agents. Each agent returns one sample image for the task (for multi-step tasks like four-panel comics, this is one representative keyframe sample). Returns sample metadata with scores initialized to 0.",
     parametersJsonSchema: {
       type: "object",
       properties: {

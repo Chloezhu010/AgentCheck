@@ -2,6 +2,9 @@ import { finalizeDelivery } from "@/server/orchestrator";
 import { ApproveAgentSchema } from "@/lib/validation";
 import type { ApiError, SessionResponse } from "@/types/audit";
 
+export const runtime = "nodejs";
+export const maxDuration = 180;
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -23,7 +26,7 @@ export async function POST(
     );
   }
 
-  const result = finalizeDelivery(id, parsed.data.agentId);
+  const result = await finalizeDelivery(id, parsed.data.agentId);
   if ("error" in result) {
     return Response.json({ error: result.error } satisfies ApiError, { status: 400 });
   }
