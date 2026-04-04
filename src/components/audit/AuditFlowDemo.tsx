@@ -26,7 +26,7 @@ import type {
 const POLL_INTERVAL_MS = 1500;
 const DEFAULT_BUDGET_USD = 50;
 const DEFAULT_WEIGHTS: IntentWeights = { quality: 40, price: 30, speed: 30 };
-const FLOW_PANEL_WIDTH_CLASS = "md:pr-64 xl:pr-72";
+const FLOW_PANEL_WIDTH_CLASS = "lg:pr-60 xl:pr-72";
 
 type LocalMessage = {
   source: "assistant" | "user";
@@ -49,6 +49,7 @@ export function AuditFlowDemo() {
   const [devMode, setDevMode] = useState(false);
   const [isFlowOpen, setIsFlowOpen] = useState(true);
   const [highlightedAgentId, setHighlightedAgentId] = useState<string | null>(null);
+  const [isMdUp, setIsMdUp] = useState(false);
   const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -105,6 +106,14 @@ export function AuditFlowDemo() {
         clearTimeout(highlightTimerRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    const onChange = (event: MediaQueryListEvent) => setIsMdUp(event.matches);
+    setIsMdUp(media.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
   }, []);
 
   useEffect(() => {
@@ -354,6 +363,7 @@ export function AuditFlowDemo() {
   const hasSession = !!session;
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
   const hasSamplesReady = stage === "evaluating" && !!evaluatingState && evaluatingState.samples.length > 0;
+  const showMiddlePanel = hasSamplesReady && isMdUp;
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -376,7 +386,11 @@ export function AuditFlowDemo() {
         {/* Chat column */}
         <div
           className={`flex flex-col overflow-hidden ${
-            hasSamplesReady ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0" : hasSession ? "flex-1" : "w-full"
+            showMiddlePanel
+              ? "w-full md:w-[38%] xl:w-[34%] md:flex-shrink-0"
+              : hasSession
+                ? "flex-1"
+                : "w-full"
           }`}
         >
           <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12">
@@ -408,8 +422,8 @@ export function AuditFlowDemo() {
                       canApprove={stage === "evaluating"}
                       isPending={isPending}
                       onApprove={handleApprove}
-                      compactSamples={hasSamplesReady}
-                      onOpenDetails={handleOpenDetailedReview}
+                      compactSamples={showMiddlePanel}
+                      onOpenDetails={showMiddlePanel ? handleOpenDetailedReview : undefined}
                     />
                   </div>
                 );
@@ -440,7 +454,7 @@ export function AuditFlowDemo() {
         </div>
 
         {/* Middle detail panel */}
-        {hasSamplesReady && (
+        {showMiddlePanel && (
           <div ref={samplePanelRef} className="hidden min-w-0 flex-1 md:block">
             <div className="h-full">
               <AgentConfirmPanel
@@ -456,7 +470,7 @@ export function AuditFlowDemo() {
         )}
       </div>
 
-      <aside className="fixed top-14 right-0 bottom-0 z-20 hidden items-start md:flex">
+      <aside className="fixed top-14 right-0 bottom-0 z-20 hidden items-start lg:flex">
         <button
           type="button"
           onClick={() => setIsFlowOpen((open) => !open)}
@@ -485,7 +499,7 @@ export function AuditFlowDemo() {
         </button>
 
         {isFlowOpen && (
-          <div className="h-full w-64 border-l border-zinc-200 bg-zinc-50 xl:w-72">
+          <div className="h-full w-60 border-l border-zinc-200 bg-zinc-50 xl:w-72">
             {session ? (
               <ExecutionFlow
                 state={session.state}
