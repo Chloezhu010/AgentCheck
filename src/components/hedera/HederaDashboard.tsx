@@ -18,6 +18,18 @@ type EscrowTestResult = {
   status: string;
 } | null;
 
+function formatConsensusTimestamp(consensusTimestamp: string): string {
+  const [secondsRaw, nanosRaw = "0"] = consensusTimestamp.split(".");
+  const seconds = Number(secondsRaw);
+  const nanos = Number(nanosRaw.padEnd(9, "0").slice(0, 9));
+  if (!Number.isFinite(seconds) || !Number.isFinite(nanos)) {
+    return "";
+  }
+
+  const ms = seconds * 1000 + Math.floor(nanos / 1_000_000);
+  return new Date(ms).toLocaleString();
+}
+
 export function HederaDashboard() {
   const [topicId, setTopicId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountInfo[]>([]);
@@ -269,7 +281,7 @@ export function HederaDashboard() {
               const evt = msg.content as Record<string, unknown>;
               const eventType = (evt.t ?? evt.event ?? "UNKNOWN") as string;
               const badge = eventColor[eventType] ?? "bg-zinc-100 text-zinc-600";
-              const ts = evt.ts ? new Date(evt.ts as number).toLocaleString() : "";
+              const ts = formatConsensusTimestamp(msg.consensusTimestamp);
               const detail = (evt.d ?? evt.data ?? {}) as Record<string, unknown>;
               return (
                 <div
