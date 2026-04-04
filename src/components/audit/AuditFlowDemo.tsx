@@ -106,23 +106,53 @@ export function AuditFlowDemo() {
     prevMsgCount.current = session?.messages?.length ?? 0;
   }, [session?.messages?.length]);
 
-  // Polling
   useEffect(() => {
-    if (!sessionId || stage === "delivered" || stage === "error") return;
+    if (!sessionId || !isFlowRunning) return;
 
-    const interval = setInterval(async () => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let inFlightController: AbortController | null = null;
+
+    const poll = async () => {
+      inFlightController = new AbortController();
+
       try {
-        const res = await fetch(`/api/audit/session/${sessionId}`);
-        if (!res.ok) return;
+        const res = await fetch(`/api/audit/session/${sessionId}`, {
+          signal: inFlightController.signal,
+        });
+        if (!res.ok || cancelled) return;
+
         const data = (await res.json()) as { session: AuditSession };
-        setSession(data.session);
-      } catch {
+        if (!cancelled) {
+          setSession(data.session);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
         // silently ignore transient fetch errors
+      } finally {
+        inFlightController = null;
+        if (!cancelled) {
+          timeoutId = setTimeout(() => {
+            void poll();
+          }, POLL_INTERVAL_MS);
+        }
       }
+    };
+
+    timeoutId = setTimeout(() => {
+      void poll();
     }, POLL_INTERVAL_MS);
 
-    return () => clearInterval(interval);
-  }, [sessionId, stage]);
+    return () => {
+      cancelled = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      inFlightController?.abort();
+    };
+  }, [isFlowRunning, sessionId]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
