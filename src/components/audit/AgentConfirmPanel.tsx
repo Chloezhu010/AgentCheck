@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentBid, SampleEvaluation } from "@/types/audit";
 
 type AgentConfirmPanelProps = {
@@ -14,6 +14,51 @@ type AgentConfirmPanelProps = {
   layout?: "sidebar" | "main";
 };
 
+function sanitizeFileSegment(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "sample";
+}
+
+function extensionFromDataUrl(dataUrl: string): string {
+  const mimeType = dataUrl.match(/^data:([^;,]+)[;,]/)?.[1] ?? "image/png";
+  switch (mimeType) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    default:
+      return "png";
+  }
+}
+
+function getDownloadFileName(sample: SampleEvaluation, timestampLabel: string): string {
+  const prefix = `${sanitizeFileSegment(sample.agentName)}-${sanitizeFileSegment(sample.sampleTitle)}`;
+  if (sample.imageDataUrl) {
+    return `${prefix}-${timestampLabel}.${extensionFromDataUrl(sample.imageDataUrl)}`;
+  }
+  return `${prefix}-${timestampLabel}.txt`;
+}
+
+function triggerDownload(href: string, fileName: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
+function timestampLabel(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
 export function AgentConfirmPanel({
   samples,
   bids,
@@ -24,6 +69,9 @@ export function AgentConfirmPanel({
   onEditRequirements,
   layout = "sidebar",
 }: AgentConfirmPanelProps) {
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
+
   const selectedSample = useMemo(
     () => {
       if (samples.length === 0) return null;
@@ -37,6 +85,64 @@ export function AgentConfirmPanel({
     () => (selectedSample ? bids.find((bid) => bid.id === selectedSample.agentId) ?? null : null),
     [bids, selectedSample],
   );
+
+  const downloadSample = (sample: SampleEvaluation, suffix = "") => {
+    const ts = suffix ? `${timestampLabel()}-${suffix}` : timestampLabel();
+    const fileName = getDownloadFileName(sample, ts);
+    if (sample.imageDataUrl) {
+      triggerDownload(sample.imageDataUrl, fileName);
+      return;
+    }
+
+    const textPayload = [
+      `Title: ${sample.sampleTitle}`,
+      `Agent: ${sample.agentName}`,
+      `Model: ${sample.model}`,
+      `Score: ${Math.round(sample.score * 100)}`,
+      "",
+      `Summary: ${sample.summary}`,
+      "",
+      `Recommendation: ${sample.recommendation}`,
+    ].join("\n");
+
+    const blob = new Blob([textPayload], { type: "text/plain;charset=utf-8" });
+    const blobUrl = URL.createObjectURL(blob);
+    triggerDownload(blobUrl, fileName);
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+  };
+
+  const downloadAllSamples = () => {
+    samples.forEach((sample, index) => {
+      window.setTimeout(() => {
+        downloadSample(sample, String(index + 1).padStart(2, "0"));
+      }, index * 120);
+    });
+  };
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!downloadMenuRef.current) return;
+      if (!downloadMenuRef.current.contains(event.target as Node)) {
+        setDownloadMenuOpen(false);
+      }
+    };
+
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDownloadMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [downloadMenuOpen]);
+
   if (!selectedSample) return null;
 
   const scorePercent = Math.round(selectedSample.score * 100);
@@ -56,7 +162,58 @@ export function AgentConfirmPanel({
       </div>
 
       <div className="mb-3 space-y-2">
-        <p className="text-[11px] font-medium text-zinc-600">Sample choices</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-medium text-zinc-600">Sample choices</p>
+          <div className="relative" ref={downloadMenuRef}>
+            <button
+              type="button"
+              onClick={() => setDownloadMenuOpen((open) => !open)}
+              className="inline-flex items-center gap-1 rounded border border-zinc-300 bg-white px-2 py-1 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-50"
+              aria-expanded={downloadMenuOpen}
+              aria-haspopup="menu"
+            >
+              Download
+              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8l5 5 5-5" />
+              </svg>
+            </button>
+
+            {downloadMenuOpen && (
+              <div
+                className="absolute top-[calc(100%+4px)] right-0 z-20 w-52 rounded-md border border-zinc-200 bg-white p-1 shadow-[0_12px_28px_rgba(15,23,42,0.12)]"
+                role="menu"
+              >
+                {samples.map((sample) => (
+                  <button
+                    key={`download-option-${sample.id}`}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      downloadSample(sample);
+                      setDownloadMenuOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] text-zinc-700 hover:bg-zinc-50"
+                  >
+                    <span className="truncate">Download {sample.agentName}</span>
+                    <span className="ml-2 text-[10px] text-zinc-400">single</span>
+                  </button>
+                ))}
+                <div className="my-1 h-px bg-zinc-200" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    downloadAllSamples();
+                    setDownloadMenuOpen(false);
+                  }}
+                  className="w-full rounded px-2 py-1.5 text-left text-[11px] font-semibold text-zinc-700 hover:bg-zinc-50"
+                >
+                  Download all samples
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {samples.map((sample, idx) => {
             const isSelected = selectedSample.agentId === sample.agentId;

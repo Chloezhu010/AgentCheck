@@ -39,3 +39,32 @@ body {
 .animate-in {
   animation: fade-in-up 0.3s ease-out both;
 }
+
+@keyframes sample-panel-pullout {
+  0% {
+    opacity: 0;
+    transform: translateX(-28px) scaleX(0.96);
+    clip-path: inset(0 100% 0 0);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(0) scaleX(1.01);
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scaleX(1);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.animate-sample-panel-pullout {
+  transform-origin: left center;
+  animation: sample-panel-pullout 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sample-panel-pullout {
+    animation: none;
+  }
+}
