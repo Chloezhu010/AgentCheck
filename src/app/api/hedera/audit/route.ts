@@ -1,53 +1,71 @@
-import { NextRequest, NextResponse } from "next/server";
 import { logAuditEvent } from "@/server/hedera/audit";
 import { getAuditMessages } from "@/server/hedera/mirror";
-import type { AuditEventType } from "@/types/hedera";
+import {
+  HederaAuditEventSchema,
+  HederaAuditQuerySchema,
+} from "@/lib/validation";
+import type { ApiError } from "@/types/audit";
 
 // POST — submit an audit event to HCS
-export async function POST(request: NextRequest) {
+export async function POST(request: Request): Promise<Response> {
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { t, taskId, subtaskId, agentId, d } = body as {
-      t: AuditEventType;
-      taskId: string;
-      subtaskId?: string;
-      agentId?: string;
-      d?: Record<string, unknown>;
-    };
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" } satisfies ApiError, {
+      status: 400,
+    });
+  }
 
-    if (!t || !taskId) {
-      return NextResponse.json(
-        { error: "Missing required fields: t, taskId" },
-        { status: 400 },
-      );
-    }
+  const parsedBody = HederaAuditEventSchema.safeParse(body);
+  if (!parsedBody.success) {
+    return Response.json(
+      { error: parsedBody.error.issues[0].message } satisfies ApiError,
+      { status: 400 },
+    );
+  }
 
-    const result = await logAuditEvent({ t, taskId, subtaskId, agentId, d: d ?? {} });
-    return NextResponse.json(result);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  try {
+    const result = await logAuditEvent(parsedBody.data);
+    return Response.json(result);
+  } catch {
+    return Response.json(
+      { error: "Failed to submit audit event" } satisfies ApiError,
+      { status: 500 },
+    );
   }
 }
 
 // GET — read audit messages from Mirror Node
-export async function GET(request: NextRequest) {
+export async function GET(request: Request): Promise<Response> {
+  const topicId = process.env.HEDERA_AUDIT_TOPIC_ID;
+  if (!topicId) {
+    return Response.json(
+      { error: "HEDERA_AUDIT_TOPIC_ID not configured" } satisfies ApiError,
+      { status: 500 },
+    );
+  }
+
+  const url = new URL(request.url);
+  const parsedQuery = HederaAuditQuerySchema.safeParse({
+    limit: url.searchParams.get("limit") ?? undefined,
+    order: url.searchParams.get("order") ?? undefined,
+  });
+  if (!parsedQuery.success) {
+    return Response.json(
+      { error: parsedQuery.error.issues[0].message } satisfies ApiError,
+      { status: 400 },
+    );
+  }
+
   try {
-    const topicId = process.env.HEDERA_AUDIT_TOPIC_ID;
-    if (!topicId) {
-      return NextResponse.json(
-        { error: "HEDERA_AUDIT_TOPIC_ID not configured" },
-        { status: 500 },
-      );
-    }
-
-    const limit = Number(request.nextUrl.searchParams.get("limit") ?? "25");
-    const order = request.nextUrl.searchParams.get("order") === "asc" ? "asc" : "desc";
+    const { limit, order } = parsedQuery.data;
     const messages = await getAuditMessages(topicId, limit, order);
-
-    return NextResponse.json({ topicId, messages });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return Response.json({ topicId, messages });
+  } catch {
+    return Response.json(
+      { error: "Failed to read audit messages" } satisfies ApiError,
+      { status: 500 },
+    );
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import type { MirrorMessage } from "@/types/hedera";
 
 const HASHSCAN = "https://hashscan.io/testnet";
@@ -54,7 +55,23 @@ export function HederaDashboard() {
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchAudit(), fetchBalances()]).finally(() => setLoading(false));
+    let active = true;
+
+    async function loadInitialData() {
+      try {
+        await Promise.all([fetchAudit(), fetchBalances()]);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadInitialData();
+
+    return () => {
+      active = false;
+    };
   }, [fetchAudit, fetchBalances]);
 
   async function handleTestAudit() {
@@ -150,12 +167,12 @@ export function HederaDashboard() {
             </p>
           )}
         </div>
-        <a
+        <Link
           href="/"
           className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50"
         >
           Back to Chat
-        </a>
+        </Link>
       </div>
 
       {error && (
@@ -242,7 +259,9 @@ export function HederaDashboard() {
         </h3>
 
         {messages.length === 0 ? (
-          <p className="text-xs text-zinc-400">No audit messages yet. Click "Test HCS Audit Event" above.</p>
+          <p className="text-xs text-zinc-400">
+            No audit messages yet. Click &quot;Test HCS Audit Event&quot; above.
+          </p>
         ) : (
           <div className="space-y-2">
             {messages.map((msg, i) => {
