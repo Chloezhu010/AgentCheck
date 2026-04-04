@@ -7,6 +7,7 @@ export type AgentPersona = {
   name: string;
   style: string;
   systemPrompt: string;
+  pricingHint: string;
 };
 
 export type GenerateImageRequest = {

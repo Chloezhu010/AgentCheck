@@ -1,6 +1,6 @@
 // Primitives
 
-export type FlowStage = "idle" | "bidding" | "evaluating" | "delivered" | "error";
+export type FlowStage = "idle" | "agentic" | "bidding" | "evaluating" | "delivered" | "error";
 
 export type IntentWeights = {
   quality: number;
@@ -53,8 +53,9 @@ export type OrchestratorMessage = {
   id: string;
   ts: number;
   text: string;
-  kind: "text" | "scoreCanvas";
+  kind: "text" | "scoreCanvas" | "thought" | "toolCall";
   samples?: SampleEvaluation[];
+  options?: string[];
 };
 
 // Session (server-owned state machine)
@@ -66,6 +67,7 @@ export type IntentInput = {
 };
 
 export type AuditSessionState =
+  | { stage: "agentic"; pendingQuestion?: { question: string; options?: string[] } }
   | { stage: "bidding"; visibleBids: AgentBid[]; countdownSeconds: number }
   | { stage: "evaluating"; bids: AgentBid[]; samples: SampleEvaluation[] }
   | {
@@ -93,9 +95,10 @@ export type AuditSession = {
 export type ChatMessage = {
   id: string;
   role: "assistant" | "user";
-  kind: "text" | "scoreCanvas";
+  kind: "text" | "scoreCanvas" | "thought" | "toolCall";
   text: string;
   samples?: SampleEvaluation[];
+  options?: string[];
 };
 
 // API response shapes
