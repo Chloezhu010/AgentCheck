@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { HederaDashboard } from "@/components/hedera/HederaDashboard";
 
 export default function HederaPage() {
   const [topicId, setTopicId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const sessionId = searchParams.get("session");
+  const backHref = sessionId ? `/?session=${encodeURIComponent(sessionId)}` : "/";
 
   return (
     <main className="flex h-screen flex-col bg-zinc-50 px-3 py-3 md:px-6 md:py-4">
       <header className="mb-3 flex flex-col items-start gap-2 px-2">
         <Link
-          href="/"
+          href={backHref}
           className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50"
         >
           <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8}>

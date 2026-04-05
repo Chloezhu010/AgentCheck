@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useWorldIdGate } from "@/components/audit/WorldIdGate";
 import { WORLD_ACTIONS, worldScope } from "@/lib/world-id";
 import type {
@@ -15,6 +16,7 @@ import type {
 const POLL_INTERVAL_MS = 1500;
 const DEFAULT_BUDGET_USD = 50;
 const DEFAULT_WEIGHTS: IntentWeights = { quality: 40, price: 30, speed: 30 };
+const UI_STATE_STORAGE_KEY = "agentick.audit.ui-state.v1";
 
 type LocalMessage = {
   source: "assistant" | "user";
@@ -25,7 +27,33 @@ type LocalMessage = {
 
 export type DisplayMessage = LocalMessage | { source: "backend"; msg: OrchestratorMessage };
 
+type PersistedAuditUiState = {
+  sessionId: string | null;
+  localMessages: LocalMessage[];
+  lastSubmittedTask: string;
+};
+
+function isLocalMessage(value: unknown): value is LocalMessage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<LocalMessage>;
+  const validSource = candidate.source === "assistant" || candidate.source === "user";
+  return (
+    validSource &&
+    typeof candidate.id === "string" &&
+    typeof candidate.text === "string" &&
+    typeof candidate.ts === "number"
+  );
+}
+
 export function useAuditFlowController() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const sessionIdFromUrl = searchParams.get("session");
+
   const [taskDescription, setTaskDescription] = useState("");
   const [lastSubmittedTask, setLastSubmittedTask] = useState("");
 
@@ -46,6 +74,7 @@ export function useAuditFlowController() {
   );
   const [isMdUp, setIsMdUp] = useState(false);
   const [hasPromptedSampleSelection, setHasPromptedSampleSelection] = useState(false);
+  const [hasRestoredPersistedState, setHasRestoredPersistedState] = useState(false);
   const worldId = useWorldIdGate();
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -114,6 +143,113 @@ export function useAuditFlowController() {
           ? "samples"
           : null;
   const showMiddlePanel = middlePanelMode !== null;
+
+  useEffect(() => {
+    if (hasRestoredPersistedState) return;
+
+    let restoredSessionId: string | null = null;
+    let restoredLocalMessages: LocalMessage[] = [];
+    let restoredLastSubmittedTask = "";
+
+    try {
+      const raw = window.sessionStorage.getItem(UI_STATE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PersistedAuditUiState>;
+        if (typeof parsed.sessionId === "string") {
+          restoredSessionId = parsed.sessionId;
+        }
+        if (Array.isArray(parsed.localMessages)) {
+          restoredLocalMessages = parsed.localMessages.filter(isLocalMessage);
+        }
+        if (typeof parsed.lastSubmittedTask === "string") {
+          restoredLastSubmittedTask = parsed.lastSubmittedTask;
+        }
+      }
+    } catch {
+      // Ignore invalid persisted state and continue with fresh defaults.
+    }
+
+    if (restoredLocalMessages.length > 0) {
+      setLocalMessages(restoredLocalMessages);
+    }
+
+    if (restoredLastSubmittedTask) {
+      setLastSubmittedTask(restoredLastSubmittedTask);
+    }
+
+    if (sessionIdFromUrl) {
+      setSessionId(sessionIdFromUrl);
+    } else if (restoredSessionId) {
+      setSessionId(restoredSessionId);
+    }
+
+    setHasRestoredPersistedState(true);
+  }, [hasRestoredPersistedState, sessionIdFromUrl]);
+
+  useEffect(() => {
+    if (!hasRestoredPersistedState) return;
+
+    const persistedState: PersistedAuditUiState = {
+      sessionId,
+      localMessages,
+      lastSubmittedTask,
+    };
+
+    window.sessionStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(persistedState));
+  }, [hasRestoredPersistedState, lastSubmittedTask, localMessages, sessionId]);
+
+  useEffect(() => {
+    if (!hasRestoredPersistedState) return;
+
+    if (sessionId && sessionIdFromUrl !== sessionId) {
+      router.replace(`${pathname}?session=${encodeURIComponent(sessionId)}`, {
+        scroll: false,
+      });
+      return;
+    }
+
+    if (!sessionId && sessionIdFromUrl) {
+      router.replace(pathname, { scroll: false });
+    }
+  }, [hasRestoredPersistedState, pathname, router, sessionId, sessionIdFromUrl]);
+
+  useEffect(() => {
+    if (!sessionId || session?.id === sessionId) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    async function restoreSession(): Promise<void> {
+      try {
+        const res = await fetch(`/api/audit/session/${sessionId}`, {
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setSessionId(null);
+          setSession(null);
+          return;
+        }
+        if (!res.ok) return;
+
+        const data = (await res.json()) as { session: AuditSession };
+        if (!cancelled) {
+          setSession(data.session);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+      }
+    }
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [session?.id, sessionId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
