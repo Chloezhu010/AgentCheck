@@ -22,10 +22,7 @@ export function AuditFlowDemo() {
   const taskInputRef = useRef<HTMLInputElement>(null);
 
   function handlePickPrompt(prompt: string) {
-    controller.setTaskDescription(prompt);
-    window.requestAnimationFrame(() => {
-      taskInputRef.current?.focus();
-    });
+    controller.handleStartAuctionWithPrompt(prompt);
   }
 
   return (

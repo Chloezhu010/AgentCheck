@@ -195,7 +195,7 @@ export function useAuditFlowController() {
       return;
     }
 
-    handleStartAuction();
+    startAuction(taskDescription);
   }
 
   function handleChat() {
@@ -258,14 +258,16 @@ export function useAuditFlowController() {
     });
   }
 
-  function handleStartAuction() {
+  function startAuction(task: string) {
+    const userTask = task.trim();
+    if (!userTask) return;
+
     setSubmitError(null);
     setFileSamples([]);
     setFileBids([]);
     setSelectedAgentId(null);
     setIsSampleDetailsOpen(false);
 
-    const userTask = taskDescription;
     setTaskDescription("");
     setLastSubmittedTask(userTask);
     setHasPromptedSampleSelection(false);
@@ -332,6 +334,10 @@ export function useAuditFlowController() {
       setSessionId(newId);
       setSession(newSession);
     });
+  }
+
+  function handleStartAuctionWithPrompt(prompt: string) {
+    startAuction(prompt);
   }
 
   function handleApprove(sample: SampleEvaluation) {
@@ -447,6 +453,7 @@ export function useAuditFlowController() {
     handleEditRequirements,
     handleReset,
     handleSelectSample,
+    handleStartAuctionWithPrompt,
     handleSubmitShortlist,
     handleSubmit,
     setDevMode,
