@@ -22,6 +22,31 @@ Links:
 - https://github.com/hashgraph/hedera-agent-kit-js
 - https://www.x402.org/
 
+
+### "No Solidity Allowed" — Build with Hedera SDKs ⸺ $3,000
+Up to 3 teams will receive $1,000
+Build a working application on Hedera using only the Hedera SDK. No Solidity, no smart contracts. Use native Hedera services directly: create tokens, post messages to the Consensus Service, schedule transactions, manage accounts, or combine multiple services into something new.
+This bounty is designed for developers who are new to Hedera or new to blockchain. Hedera's SDK lets you do things that typically require smart contracts on other chains: create fungible and non-fungible tokens, set up custom fee schedules, schedule future transactions, and publish verifiable messages, all with a few lines of JavaScript or Python.
+Qualification Requirements
+
+Qualification Requirements:
+1. Use the Hedera JavaScript/TypeScript SDK (@hashgraph/sdk) or Python SDK. No Solidity smart contracts.
+2. Incorporate at least two native Hedera services (e.g., HTS + HCS, HTS + Scheduled Transactions, HCS + Mirror Node).
+3. Provide source code in a public GitHub repo with a README covering setup and usage.
+4. Include a ≤ 5-minute demo video showing the application in action.
+Optional enhancements (extra points):
+- Coherent end-to-end user experience (not just API calls)
+- Integration with the Hedera Mirror Node REST API for querying network data
+- Creative use of Hedera Consensus Service for data integrity, logging, or messaging
+- Use of the Hedera Agent Kit for AI-driven workflows (counts as SDK usage)
+- Thoughtful security approach (key management, access controls)
+Ideas to get you started:
+- Timestamped Proof System
+- Token-Gated Access 
+- Scheduled Payment Bot
+- Supply Chain Tracker 
+- Verifiable Messaging 
+
 ### 👥 Best use of World ID 4.0 ⸺ $8,000
 🥇
 1st place
