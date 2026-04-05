@@ -1,6 +1,7 @@
 "use client";
 
 import type { DeliveryReport } from "@/types/audit";
+import type { DeliveryComicFrame } from "@/types/audit";
 
 type DeliveryPanelProps = {
   delivery: DeliveryReport;
@@ -48,7 +49,15 @@ function timestampLabel(): string {
 }
 
 function getPrimaryDeliveryDataUrl(delivery: DeliveryReport): string | null {
-  return delivery.imageDataUrl ?? delivery.comicFrames?.[0]?.imageDataUrl ?? null;
+  return delivery.imageDataUrl ?? null;
+}
+
+function getOrderedComicFrames(delivery: DeliveryReport): DeliveryComicFrame[] {
+  if (!delivery.comicFrames || delivery.comicFrames.length === 0) {
+    return [];
+  }
+
+  return [...delivery.comicFrames].sort((a, b) => a.panelNumber - b.panelNumber);
 }
 
 function buildTextOutput(delivery: DeliveryReport, taskDescription: string, agentName: string): string {
@@ -75,11 +84,25 @@ export function DeliveryPanel({
   taskDescription,
   layout = "main",
 }: DeliveryPanelProps) {
-  const primaryDataUrl = getPrimaryDeliveryDataUrl(delivery);
-  const finalFileName = primaryDataUrl ? "final-output.png" : "final-output.txt";
+  const comicFrames = getOrderedComicFrames(delivery);
+  const hasComicFrames = comicFrames.length > 0;
+  const primaryDataUrl = hasComicFrames ? null : getPrimaryDeliveryDataUrl(delivery);
+  const finalFileName = hasComicFrames
+    ? `final-output-panel-1..${comicFrames.length}.png`
+    : primaryDataUrl
+      ? "final-output.png"
+      : "final-output.txt";
 
   function downloadFinalOutput(): void {
     const baseName = `${sanitizeFileSegment(approvedAgentName)}-${sanitizeFileSegment(delivery.title)}-${timestampLabel()}`;
+
+    if (hasComicFrames) {
+      comicFrames.forEach((frame) => {
+        const fileName = `${baseName}-panel-${frame.panelNumber}.${extensionFromDataUrl(frame.imageDataUrl)}`;
+        triggerDownload(frame.imageDataUrl, fileName);
+      });
+      return;
+    }
 
     if (primaryDataUrl) {
       const fileName = `${baseName}.${extensionFromDataUrl(primaryDataUrl)}`;
@@ -120,7 +143,7 @@ export function DeliveryPanel({
             onClick={downloadFinalOutput}
             className="rounded border border-zinc-300 bg-white px-2 py-1 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-50"
           >
-            Download
+            {hasComicFrames ? `Download ${comicFrames.length} Panels` : "Download"}
           </button>
         </div>
       </div>
@@ -135,7 +158,25 @@ export function DeliveryPanel({
         </div>
 
         <div className="mt-2 overflow-hidden rounded border border-zinc-200 bg-zinc-50">
-          {primaryDataUrl ? (
+          {hasComicFrames ? (
+            <div className="grid grid-cols-2 gap-2 p-2">
+              {comicFrames.map((frame) => (
+                <figure
+                  key={frame.panelNumber}
+                  className="overflow-hidden rounded border border-zinc-200 bg-white"
+                >
+                  <img
+                    src={frame.imageDataUrl}
+                    alt={`Comic panel ${frame.panelNumber}`}
+                    className="aspect-square w-full object-cover"
+                  />
+                  <figcaption className="border-t border-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
+                    Panel {frame.panelNumber}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          ) : primaryDataUrl ? (
             <img src={primaryDataUrl} alt="Final output preview" className="w-full" />
           ) : (
             <div className="flex h-44 w-full items-center justify-center text-[11px] text-zinc-400">

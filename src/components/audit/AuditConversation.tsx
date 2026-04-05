@@ -71,7 +71,13 @@ function DeliveryShowcase({ delivery }: { delivery: DeliveryReport }) {
     delivery.taskKind === "four-panel-comic"
       ? delivery.comicFrames?.[0]?.imageDataUrl
       : delivery.imageDataUrl;
-  const fileGuide = [thumbnail ? "final-output.png" : "final-output.txt"];
+  const fileGuide =
+    delivery.taskKind === "four-panel-comic" && delivery.comicFrames && delivery.comicFrames.length > 0
+      ? delivery.comicFrames
+          .slice()
+          .sort((a, b) => a.panelNumber - b.panelNumber)
+          .map((frame) => `final-output-panel-${frame.panelNumber}.png`)
+      : [thumbnail ? "final-output.png" : "final-output.txt"];
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
