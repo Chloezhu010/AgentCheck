@@ -54,7 +54,20 @@ export function useAuditFlowController() {
   const isFlowRunning = stage === "bidding" || stage === "evaluating" || isAgentWorking;
 
   const totalBudget = DEFAULT_BUDGET_USD;
-  const usedBudget = session?.state.stage === "delivered" ? session.state.quoteUsd : 0;
+  const usedBudget = useMemo(() => {
+    if (!session) return 0;
+    if (session.state.stage === "delivered") {
+      return session.state.totalPaidUsd;
+    }
+    const paymentReleases = Array.isArray(session.paymentReleases)
+      ? session.paymentReleases
+      : [];
+    return Number(
+      paymentReleases
+        .reduce((sum, payment) => sum + payment.amountUsd, 0)
+        .toFixed(2),
+    );
+  }, [session]);
 
   const countdownSeconds =
     session?.state.stage === "bidding"

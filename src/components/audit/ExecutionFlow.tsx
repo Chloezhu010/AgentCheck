@@ -63,6 +63,10 @@ export function ExecutionFlow({
   const steps = stepsForStage(state.stage);
 
   const stateSamples: SampleEvaluation[] = state.stage === "evaluating" ? state.samples : [];
+  const deliveredState =
+    state.stage === "delivered"
+      ? (state as Extract<AuditSessionState, { stage: "delivered" }>)
+      : null;
   const evaluatedSamples = stateSamples.length > 0 ? stateSamples : files;
   const previewFiles = files.length > 0 ? files : evaluatedSamples;
 
@@ -253,14 +257,13 @@ export function ExecutionFlow({
         </div>
       )}
 
-      {state.stage === "delivered" && (
+      {deliveredState && (
         <div className="mt-auto pt-4">
           <p className="text-emerald-600">{"// TASK_COMPLETE ✓"}</p>
-          <p className="mt-1 text-zinc-400">
-            AGENT: {(state as Extract<AuditSessionState, { stage: "delivered" }>).approvedAgentName}
-          </p>
+          <p className="mt-1 text-zinc-400">AGENT: {deliveredState.approvedAgentName}</p>
+          <p className="text-zinc-400">PAID_TOTAL: ${deliveredState.totalPaidUsd.toFixed(2)}</p>
           <p className="text-zinc-400">
-            PAID: ${(state as Extract<AuditSessionState, { stage: "delivered" }>).quoteUsd.toFixed(2)}
+            TRIAL / FINAL: ${deliveredState.trialPaidUsd.toFixed(2)} / ${deliveredState.finalPaidUsd.toFixed(2)}
           </p>
         </div>
       )}

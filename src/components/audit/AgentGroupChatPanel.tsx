@@ -100,6 +100,7 @@ export function AgentGroupChatPanel({
     shortlist?.rationale ??
     "Waiting for enough quotes to run shortlist analysis on quality, speed, and price.";
   const shortlistPickerKey = shortlistedBids.map((bid) => bid.id).join("|") || "empty-shortlist";
+
   const promptText =
     taskDescription.trim().length > 0
       ? `Who can take this RFQ: "${taskDescription.trim()}"? Post trial quote, full quote, ETA, and one-line bid.`
@@ -154,7 +155,7 @@ export function AgentGroupChatPanel({
       <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-[11px] font-semibold text-zinc-700">Shortlist ready for sample</p>
-          <span className="text-[10px] text-zinc-500">{shortlistedBids.length}/3 selected</span>
+          <span className="text-[10px] text-zinc-500">{shortlistedBids.length} candidates</span>
         </div>
         {analysisReady && shortlistedBids.length > 0 ? (
           <ShortlistPicker
@@ -309,9 +310,14 @@ function ShortlistPicker({
 
   return (
     <div className="animate-in-right">
-      <p className="mb-2 text-[11px] text-zinc-600">
-        {prompt ?? "Select the agents you want for sample generation."}
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] text-zinc-600">
+          {prompt ?? "Select the agents you want for sample generation."}
+        </p>
+        <span className="flex-shrink-0 text-[10px] text-zinc-500">
+          {selectedAgentIds.length}/{bids.length} selected
+        </span>
+      </div>
       <div className="space-y-1.5">
         {bids.map((bid, index) => {
           const checked = selectedAgentIds.includes(bid.id);
