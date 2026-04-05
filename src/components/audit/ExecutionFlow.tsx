@@ -43,11 +43,32 @@ type ExecutionFlowProps = {
   usedBudgetUsd: number;
   files?: SampleEvaluation[];
   selectedAgentId?: string | null;
-  onPreviewFile?: (agentId: string) => void;
+  activeDeliveredPreview?: "sample" | "delivery" | null;
+  onPreviewSampleFile?: (agentId: string) => void;
+  onPreviewDeliveryFile?: () => void;
 };
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+type DeliveryFile = {
+  id: string;
+  fileName: string;
+  detail: string;
+  format: "IMG" | "TXT";
+};
+
+function getDeliveryFile(state: Extract<AuditSessionState, { stage: "delivered" }>): DeliveryFile {
+  const delivery = state.delivery;
+  const hasImagePayload = Boolean(delivery.imageDataUrl || delivery.comicFrames?.[0]?.imageDataUrl);
+
+  return {
+    id: "delivery-main",
+    fileName: hasImagePayload ? "final-output.png" : "final-output.txt",
+    detail: delivery.title,
+    format: hasImagePayload ? "IMG" : "TXT",
+  };
 }
 
 export function ExecutionFlow({
@@ -58,13 +79,16 @@ export function ExecutionFlow({
   usedBudgetUsd,
   files = [],
   selectedAgentId = null,
-  onPreviewFile,
+  activeDeliveredPreview = null,
+  onPreviewSampleFile,
+  onPreviewDeliveryFile,
 }: ExecutionFlowProps) {
   const steps = stepsForStage(state.stage);
 
   const stateSamples: SampleEvaluation[] = state.stage === "evaluating" ? state.samples : [];
-  const evaluatedSamples = stateSamples.length > 0 ? stateSamples : files;
-  const previewFiles = files.length > 0 ? files : evaluatedSamples;
+  const sampleFiles = files.length > 0 ? files : stateSamples;
+  const deliveredState = state.stage === "delivered" ? state : null;
+  const deliveryFile = deliveredState ? getDeliveryFile(deliveredState) : null;
 
   const remainingBudgetUsd = Math.max(totalBudgetUsd - usedBudgetUsd, 0);
   const usageRatio = totalBudgetUsd > 0 ? Math.min(Math.max(usedBudgetUsd / totalBudgetUsd, 0), 1) : 0;
@@ -159,109 +183,137 @@ export function ExecutionFlow({
 
       <div className="mb-6">
         <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">Files</p>
-        {previewFiles.length > 0 ? (
-          <div className="space-y-1.5">
-            {previewFiles.map((sample, i) => {
-              const scorePercent = Math.round(sample.score * 100);
-              const isSelected = selectedAgentId === sample.agentId;
-              const canPreview = typeof onPreviewFile === "function";
+        {sampleFiles.length > 0 || deliveryFile ? (
+          <div className="space-y-3">
+            {sampleFiles.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[10px] tracking-wide text-zinc-500 uppercase">Sample Files</p>
+                <div className="space-y-1.5">
+                  {sampleFiles.map((sample, i) => {
+                    const scorePercent = Math.round(sample.score * 100);
+                    const isSelected =
+                      deliveredState
+                        ? activeDeliveredPreview === "sample" && selectedAgentId === sample.agentId
+                        : selectedAgentId === sample.agentId;
+                    const canPreview = typeof onPreviewSampleFile === "function";
 
-              return (
-                <button
-                  key={sample.id}
-                  type="button"
-                  onClick={() => onPreviewFile?.(sample.agentId)}
-                  disabled={!canPreview}
-                  className={`flex w-full items-center gap-2 rounded border px-2.5 py-2 text-left ${
-                    isSelected
-                      ? "border-zinc-800 bg-zinc-900 text-white"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
-                  } disabled:cursor-default`}
-                >
-                  <span className={`text-[10px] ${isSelected ? "text-white/75" : "text-zinc-400"}`}>
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className={`truncate font-semibold ${isSelected ? "text-white" : "text-zinc-800"}`}>
-                      {sample.sampleTitle}
-                    </p>
-                    <p className={`truncate text-[10px] ${isSelected ? "text-white/75" : "text-zinc-500"}`}>
-                      {sample.agentName}
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                      isSelected ? "bg-white/15 text-white" : "bg-emerald-50 text-emerald-700"
-                    }`}
+                    return (
+                      <button
+                        key={sample.id}
+                        type="button"
+                        onClick={() => onPreviewSampleFile?.(sample.agentId)}
+                        disabled={!canPreview}
+                        className={`flex w-full items-center gap-2 rounded border px-2.5 py-2 text-left ${
+                          isSelected
+                            ? "border-zinc-800 bg-zinc-900 text-white"
+                            : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                        } disabled:cursor-default`}
+                      >
+                        <span className={`text-[10px] ${isSelected ? "text-white/75" : "text-zinc-400"}`}>
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`truncate font-semibold ${isSelected ? "text-white" : "text-zinc-800"}`}>
+                            {sample.sampleTitle}
+                          </p>
+                          <p className={`truncate text-[10px] ${isSelected ? "text-white/75" : "text-zinc-500"}`}>
+                            {sample.agentName}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            isSelected ? "bg-white/15 text-white" : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          SAMPLE
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            isSelected ? "bg-white/15 text-white" : "bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          {scorePercent > 0 ? `${scorePercent}` : "–"}
+                        </span>
+                        <span className={`text-[10px] font-semibold ${isSelected ? "text-white" : "text-zinc-600"}`}>
+                          Preview
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {deliveryFile && (
+              <div>
+                <p className="mb-1.5 text-[10px] tracking-wide text-zinc-500 uppercase">Delivery Files</p>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onPreviewDeliveryFile?.()}
+                    disabled={typeof onPreviewDeliveryFile !== "function"}
+                    className={`flex w-full items-center gap-2 rounded border px-2.5 py-2 text-left ${
+                      activeDeliveredPreview === "delivery"
+                        ? "border-zinc-800 bg-zinc-900 text-white"
+                        : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                    } disabled:cursor-default`}
                   >
-                    {scorePercent > 0 ? `${scorePercent}` : "–"}
-                  </span>
-                  <span className={`text-[10px] font-semibold ${isSelected ? "text-white" : "text-zinc-600"}`}>
-                    Preview
-                  </span>
-                </button>
-              );
-            })}
+                    <span className={`text-[10px] ${activeDeliveredPreview === "delivery" ? "text-white/75" : "text-zinc-400"}`}>
+                      01
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`truncate font-semibold ${activeDeliveredPreview === "delivery" ? "text-white" : "text-zinc-800"}`}>
+                        {deliveryFile.fileName}
+                      </p>
+                      <p className={`truncate text-[10px] ${activeDeliveredPreview === "delivery" ? "text-white/75" : "text-zinc-500"}`}>
+                        {deliveryFile.detail}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                        activeDeliveredPreview === "delivery"
+                          ? "bg-white/15 text-white"
+                          : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      DELIVERY
+                    </span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                        activeDeliveredPreview === "delivery"
+                          ? "bg-white/15 text-white"
+                          : "bg-zinc-100 text-zinc-600"
+                      }`}
+                    >
+                      {deliveryFile.format}
+                    </span>
+                    <span
+                      className={`text-[10px] font-semibold ${activeDeliveredPreview === "delivery" ? "text-white" : "text-zinc-600"}`}
+                    >
+                      Preview
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-1.5">
             <div className="rounded border border-dashed border-zinc-200 bg-white px-2.5 py-2 text-zinc-400">
-              FILES_PENDING
+              SAMPLE_FILES_PENDING
             </div>
             <div className="rounded border border-dashed border-zinc-200 bg-white px-2.5 py-2 text-zinc-400">
-              PREVIEW_PENDING
+              DELIVERY_FILES_PENDING
             </div>
           </div>
         )}
       </div>
 
-      {evaluatedSamples.length > 0 && (
-        <div className="mb-6">
-          <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
-            Quality_Evaluations
-          </p>
-          <div className="space-y-1.5">
-            {evaluatedSamples.map((sample, i) => (
-              <div key={sample.id} className="rounded border border-zinc-200 bg-white px-2.5 py-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-zinc-400">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="flex-1 font-semibold text-zinc-800">{sample.agentName}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-200">
-                      <div
-                        style={{ width: `${Math.round(sample.score * 100)}%` }}
-                        className="h-1 rounded-full bg-emerald-400 transition-all duration-700"
-                      />
-                    </div>
-                    <span className="w-8 text-right text-emerald-600">
-                      {sample.score > 0 ? Math.round(sample.score * 100) : "–"}
-                    </span>
-                  </div>
-                </div>
-                {sample.taskKind === "four-panel-comic" && (
-                  <p className="mt-1 text-[10px] text-sky-700">Keyframe sample only (1 image)</p>
-                )}
-                {sample.scoreBreakdown && (
-                  <p className="mt-1 text-[10px] text-zinc-500">
-                    Q {Math.round(sample.scoreBreakdown.quality * 100)} / P {Math.round(sample.scoreBreakdown.price * 100)} /
-                    S {Math.round(sample.scoreBreakdown.speed * 100)}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {state.stage === "delivered" && (
+      {deliveredState && (
         <div className="mt-auto pt-4">
           <p className="text-emerald-600">{"// TASK_COMPLETE ✓"}</p>
-          <p className="mt-1 text-zinc-400">
-            AGENT: {(state as Extract<AuditSessionState, { stage: "delivered" }>).approvedAgentName}
-          </p>
-          <p className="text-zinc-400">
-            PAID: ${(state as Extract<AuditSessionState, { stage: "delivered" }>).quoteUsd.toFixed(2)}
-          </p>
+          <p className="mt-1 text-zinc-400">AGENT: {deliveredState.approvedAgentName}</p>
+          <p className="text-zinc-400">PAID: ${deliveredState.quoteUsd.toFixed(2)}</p>
         </div>
       )}
     </div>

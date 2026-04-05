@@ -41,6 +41,9 @@ export function useAuditFlowController() {
   const [fileSamples, setFileSamples] = useState<SampleEvaluation[]>([]);
   const [fileBids, setFileBids] = useState<AgentBid[]>([]);
   const [isSampleDetailsOpen, setIsSampleDetailsOpen] = useState(false);
+  const [deliveredPreviewTarget, setDeliveredPreviewTarget] = useState<"sample" | "delivery">(
+    "delivery",
+  );
   const [isMdUp, setIsMdUp] = useState(false);
   const [hasPromptedSampleSelection, setHasPromptedSampleSelection] = useState(false);
   const worldId = useWorldIdGate();
@@ -86,13 +89,17 @@ export function useAuditFlowController() {
   const evaluatingState = session?.state.stage === "evaluating" ? session.state : null;
   const hasSamplesReady = !!evaluatingState && evaluatingState.samples.length > 0;
   const hasFiles = fileSamples.length > 0;
-  const middlePanelMode = !isMdUp
+  const middlePanelMode: "groupChat" | "samples" | "delivery" | null = !isMdUp
     ? null
-    : biddingState
-      ? ("groupChat" as const)
-      : hasSamplesReady || (hasFiles && isSampleDetailsOpen)
-        ? ("samples" as const)
-        : null;
+    : stage === "delivered"
+      ? deliveredPreviewTarget === "sample" && hasFiles
+        ? "samples"
+        : "delivery"
+      : biddingState
+        ? "groupChat"
+        : hasSamplesReady || (hasFiles && isSampleDetailsOpen)
+          ? "samples"
+          : null;
   const showMiddlePanel = middlePanelMode !== null;
 
   useEffect(() => {
@@ -166,6 +173,18 @@ export function useAuditFlowController() {
   }, [evaluatingState]);
 
   useEffect(() => {
+    if (stage !== "delivered") return;
+    setDeliveredPreviewTarget("delivery");
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== "delivered") return;
+    const approvedAgentId = session?.state.stage === "delivered" ? session.state.approvedAgentId : null;
+    if (!approvedAgentId) return;
+    setSelectedAgentId((currentId) => currentId ?? approvedAgentId);
+  }, [session?.state, stage]);
+
+  useEffect(() => {
     if (fileSamples.length === 0) return;
     if (!selectedAgentId || !fileSamples.some((sample) => sample.agentId === selectedAgentId)) {
       setSelectedAgentId(fileSamples[0].agentId);
@@ -195,7 +214,7 @@ export function useAuditFlowController() {
       return;
     }
 
-    handleStartAuction();
+    startAuction(taskDescription);
   }
 
   function handleChat() {
@@ -258,14 +277,17 @@ export function useAuditFlowController() {
     });
   }
 
-  function handleStartAuction() {
+  function startAuction(task: string) {
+    const userTask = task.trim();
+    if (!userTask) return;
+
     setSubmitError(null);
     setFileSamples([]);
     setFileBids([]);
     setSelectedAgentId(null);
     setIsSampleDetailsOpen(false);
+    setDeliveredPreviewTarget("delivery");
 
-    const userTask = taskDescription;
     setTaskDescription("");
     setLastSubmittedTask(userTask);
     setHasPromptedSampleSelection(false);
@@ -332,6 +354,10 @@ export function useAuditFlowController() {
       setSessionId(newId);
       setSession(newSession);
     });
+  }
+
+  function handleStartAuctionWithPrompt(prompt: string) {
+    startAuction(prompt);
   }
 
   function handleApprove(sample: SampleEvaluation) {
@@ -401,6 +427,7 @@ export function useAuditFlowController() {
     setFileBids([]);
     setSelectedAgentId(null);
     setIsSampleDetailsOpen(false);
+    setDeliveredPreviewTarget("delivery");
     setHasPromptedSampleSelection(false);
   }
 
@@ -414,6 +441,15 @@ export function useAuditFlowController() {
   function handleSelectSample(agentId: string) {
     setSelectedAgentId(agentId);
     setIsSampleDetailsOpen(true);
+    if (stage === "delivered") {
+      setDeliveredPreviewTarget("sample");
+    }
+  }
+
+  function handleSelectDelivery() {
+    if (stage === "delivered") {
+      setDeliveredPreviewTarget("delivery");
+    }
   }
 
   return {
@@ -432,6 +468,7 @@ export function useAuditFlowController() {
     isPending,
     isSubmitting,
     isTyping,
+    deliveredPreviewTarget,
     middlePanelMode,
     selectedAgentId,
     session,
@@ -446,7 +483,9 @@ export function useAuditFlowController() {
     handleApprove,
     handleEditRequirements,
     handleReset,
+    handleSelectDelivery,
     handleSelectSample,
+    handleStartAuctionWithPrompt,
     handleSubmitShortlist,
     handleSubmit,
     setDevMode,

@@ -8,6 +8,7 @@ import { AuditHeader } from "@/components/audit/AuditHeader";
 import { AuditInput } from "@/components/audit/AuditInput";
 import { ExecutionFlow } from "@/components/audit/ExecutionFlow";
 import { ExecutionFlowIdle } from "@/components/audit/ExecutionFlowIdle";
+import { DeliveryPanel } from "@/components/audit/DeliveryPanel";
 import { WorldIdModal } from "@/components/audit/WorldIdGate";
 import { useAuditFlowController } from "@/components/audit/useAuditFlowController";
 
@@ -19,13 +20,12 @@ export function AuditFlowDemo() {
     controller.session?.state.stage === "delivered"
       ? controller.session.state.delivery
       : null;
+  const deliveredState =
+    controller.session?.state.stage === "delivered" ? controller.session.state : null;
   const taskInputRef = useRef<HTMLInputElement>(null);
 
   function handlePickPrompt(prompt: string) {
-    controller.setTaskDescription(prompt);
-    window.requestAnimationFrame(() => {
-      taskInputRef.current?.focus();
-    });
+    controller.handleStartAuctionWithPrompt(prompt);
   }
 
   return (
@@ -91,6 +91,13 @@ export function AuditFlowDemo() {
                   isSubmittingSelection={controller.isSubmitting}
                   onSubmitSelection={controller.handleSubmitShortlist}
                 />
+              ) : controller.middlePanelMode === "delivery" && delivery && deliveredState ? (
+                <DeliveryPanel
+                  delivery={delivery}
+                  approvedAgentName={deliveredState.approvedAgentName}
+                  quoteUsd={deliveredState.quoteUsd}
+                  taskDescription={controller.session?.input.taskDescription ?? ""}
+                />
               ) : (
                 <AgentConfirmPanel
                   samples={controller.fileSamples}
@@ -148,7 +155,9 @@ export function AuditFlowDemo() {
                 usedBudgetUsd={controller.usedBudget}
                 files={controller.fileSamples}
                 selectedAgentId={controller.selectedAgentId}
-                onPreviewFile={controller.handleSelectSample}
+                activeDeliveredPreview={controller.deliveredPreviewTarget}
+                onPreviewSampleFile={controller.handleSelectSample}
+                onPreviewDeliveryFile={controller.handleSelectDelivery}
               />
             ) : (
               <ExecutionFlowIdle />
