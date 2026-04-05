@@ -87,7 +87,11 @@ export function ExecutionFlow({
 
   const stateSamples: SampleEvaluation[] = state.stage === "evaluating" ? state.samples : [];
   const sampleFiles = files.length > 0 ? files : stateSamples;
-  const deliveredState = state.stage === "delivered" ? state : null;
+  const evaluatedSamples = sampleFiles;
+  const deliveredState =
+    state.stage === "delivered"
+      ? (state as Extract<AuditSessionState, { stage: "delivered" }>)
+      : null;
   const deliveryFile = deliveredState ? getDeliveryFile(deliveredState) : null;
 
   const remainingBudgetUsd = Math.max(totalBudgetUsd - usedBudgetUsd, 0);
@@ -309,11 +313,51 @@ export function ExecutionFlow({
         )}
       </div>
 
+      {evaluatedSamples.length > 0 && (
+        <div className="mb-6">
+          <p className="mb-2 text-[10px] font-semibold tracking-widest text-zinc-400 uppercase">
+            Quality_Evaluations
+          </p>
+          <div className="space-y-1.5">
+            {evaluatedSamples.map((sample, i) => (
+              <div key={sample.id} className="rounded border border-zinc-200 bg-white px-2.5 py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="flex-1 font-semibold text-zinc-800">{sample.agentName}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-200">
+                      <div
+                        style={{ width: `${Math.round(sample.score * 100)}%` }}
+                        className="h-1 rounded-full bg-emerald-400 transition-all duration-700"
+                      />
+                    </div>
+                    <span className="w-8 text-right text-emerald-600">
+                      {sample.score > 0 ? Math.round(sample.score * 100) : "–"}
+                    </span>
+                  </div>
+                </div>
+                {sample.taskKind === "four-panel-comic" && (
+                  <p className="mt-1 text-[10px] text-sky-700">Keyframe sample only (1 image)</p>
+                )}
+                {sample.scoreBreakdown && (
+                  <p className="mt-1 text-[10px] text-zinc-500">
+                    Q {Math.round(sample.scoreBreakdown.quality * 100)} / P {Math.round(sample.scoreBreakdown.price * 100)} /
+                    S {Math.round(sample.scoreBreakdown.speed * 100)}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {deliveredState && (
         <div className="mt-auto pt-4">
           <p className="text-emerald-600">{"// TASK_COMPLETE ✓"}</p>
           <p className="mt-1 text-zinc-400">AGENT: {deliveredState.approvedAgentName}</p>
-          <p className="text-zinc-400">PAID: ${deliveredState.quoteUsd.toFixed(2)}</p>
+          <p className="text-zinc-400">PAID_TOTAL: ${deliveredState.totalPaidUsd.toFixed(2)}</p>
+          <p className="text-zinc-400">
+            TRIAL / FINAL: ${deliveredState.trialPaidUsd.toFixed(2)} / ${deliveredState.finalPaidUsd.toFixed(2)}
+          </p>
         </div>
       )}
     </div>

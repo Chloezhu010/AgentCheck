@@ -2,6 +2,7 @@ import { getPersona } from "@/server/agents/personas";
 import { getStoredSamples } from "@/server/tools/business";
 import { buildDeliveryReport } from "@/lib/audit-demo-data";
 import { buildAgentShortlist } from "@/lib/shortlist";
+import { summarizePaymentReleases } from "@/server/payment-ledger";
 import { makeMsg } from "@/server/orchestrator-session";
 import type { AgentBid, DeliveryReport, SampleEvaluation } from "@/types/audit";
 import type { SessionEntry, SelectedAgent } from "@/server/orchestrator-session";
@@ -101,12 +102,23 @@ export function setDeliveredState(
   const agentId = resolvedSelection?.agentId ?? "selected-agent";
   const agentName = resolvedSelection?.agentName ?? "Selected agent";
   const quoteUsd = resolvedSelection?.quoteUsd ?? 0;
+  const payments = Array.isArray(entry.session.paymentReleases) ? entry.session.paymentReleases : [];
+  if (!Array.isArray(entry.session.paymentReleases)) {
+    entry.session.paymentReleases = payments;
+  }
+  const { trialPaidUsd, finalPaidUsd, totalPaidUsd } = summarizePaymentReleases(
+    payments,
+    quoteUsd,
+  );
 
   entry.session.state = {
     stage: "delivered",
     approvedAgentId: agentId,
     approvedAgentName: agentName,
     quoteUsd,
+    trialPaidUsd,
+    finalPaidUsd,
+    totalPaidUsd,
     delivery: delivery ?? buildDeliveryReport(agentName, entry.session.input.taskDescription),
     auditEvents: entry.session.auditTrail,
   };

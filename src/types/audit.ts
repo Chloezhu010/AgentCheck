@@ -70,6 +70,20 @@ export type AuditEvent = {
   hcsSequenceNumber?: number;
 };
 
+export type PaymentRelease = {
+  id: string;
+  phase: "trial" | "full";
+  agentId: string;
+  agentName: string;
+  amountUsd: number;
+  amountHbar?: number;
+  agentAccountId?: string;
+  txId?: string;
+  txStatus?: string;
+  txUrl?: string;
+  releasedAt: number;
+};
+
 export type DeliveryReport = {
   title: string;
   highlights: string[];
@@ -129,6 +143,9 @@ export type AuditSessionState =
       approvedAgentId: string;
       approvedAgentName: string;
       quoteUsd: number;
+      trialPaidUsd: number;
+      finalPaidUsd: number;
+      totalPaidUsd: number;
       delivery: DeliveryReport;
       auditEvents: AuditEvent[];
     }
@@ -141,6 +158,7 @@ export type AuditSession = {
   pendingQuestion?: { question: string; options?: string[] };
   messages: OrchestratorMessage[];
   auditTrail: AuditEvent[];
+  paymentReleases: PaymentRelease[];
   createdAt: number;
   updatedAt: number;
 };
