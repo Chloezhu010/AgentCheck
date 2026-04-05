@@ -33,6 +33,7 @@ export function AuditFlowDemo() {
       <AuditHeader
         stage={controller.stage}
         countdownSeconds={controller.countdownSeconds}
+        sessionId={controller.sessionId}
         onReset={controller.handleReset}
         devMode={controller.devMode}
         onToggleDevMode={() => controller.setDevMode((enabled) => !enabled)}

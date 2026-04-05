@@ -1,6 +1,7 @@
 type AuditHeaderProps = {
   stage: string | null;
   countdownSeconds: number;
+  sessionId: string | null;
   onReset: () => void;
   devMode: boolean;
   onToggleDevMode: () => void;
@@ -25,11 +26,15 @@ function getStageBadge(stage: string | null, countdownSeconds: number): string |
 export function AuditHeader({
   stage,
   countdownSeconds,
+  sessionId,
   onReset,
   devMode,
   onToggleDevMode,
 }: AuditHeaderProps) {
   const stageBadge = getStageBadge(stage, countdownSeconds);
+  const hederaHref = sessionId
+    ? `/hedera?session=${encodeURIComponent(sessionId)}`
+    : "/hedera";
 
   return (
     <header className="flex items-center border-b border-zinc-100 px-5 py-3">
@@ -89,7 +94,7 @@ export function AuditHeader({
 
         {/* HCS dashboard entry */}
         <a
-          href="/hedera"
+          href={hederaHref}
           className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50"
           title="Open Agentick HCS Dashboard"
         >
