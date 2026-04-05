@@ -1,6 +1,13 @@
 import { buildDeliveryReport } from "@/lib/audit-demo-data";
 import { generateImage } from "@/server/agents/generate";
+import { releaseEscrowPaymentsOnHedera } from "@/server/hedera/payout";
 import { getStoredSamples } from "@/server/tools/business";
+import {
+  appendPaymentReleases,
+  buildFinalPaymentRelease,
+  buildTrialPaymentReleases,
+  filterUnreleasedPaymentReleases,
+} from "@/server/payment-ledger";
 import { runAgentLoop, parseTrialAgentSelection } from "@/server/orchestrator-loop";
 import { makeMsg, generateSessionId, sessions } from "@/server/orchestrator-session";
 import { setDeliveredState } from "@/server/orchestrator-state";
@@ -24,6 +31,7 @@ export function createSession(input: IntentInput): AuditSession {
       ),
     ],
     auditTrail: [],
+    paymentReleases: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -126,6 +134,38 @@ export async function finalizeDelivery(
     return { error: `Unsupported agent id: ${agentId}` };
   }
 
+  const pendingTrialReleases = filterUnreleasedPaymentReleases(
+    entry.session,
+    buildTrialPaymentReleases(samples, entry.currentBids),
+  );
+  if (pendingTrialReleases.length > 0) {
+    try {
+      const onChainTrialReleases = await releaseEscrowPaymentsOnHedera(
+        sessionId,
+        pendingTrialReleases,
+      );
+      const releasedTrialPayments = appendPaymentReleases(
+        entry.session,
+        onChainTrialReleases,
+      );
+      const trialSummary = releasedTrialPayments
+        .map(
+          (payment) =>
+            `${payment.agentName} $${payment.amountUsd.toFixed(2)} / ${payment.amountHbar?.toFixed(4) ?? "?"} HBAR (${payment.txId})`,
+        )
+        .join(", ");
+      entry.session.messages.push(
+        makeMsg(`Released trial escrow payments on Hedera: ${trialSummary}.`, "toolCall"),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "unknown trial payment release error";
+      entry.session.messages.push(makeMsg(`Trial escrow release failed: ${message}`));
+      entry.session.updatedAt = Date.now();
+      return { error: `Trial escrow release failed: ${message}` };
+    }
+  }
+
   entry.session.messages.push(
     makeMsg(`Approved ${sample.agentName}. Generating final delivery...`, "toolCall"),
   );
@@ -159,6 +199,40 @@ export async function finalizeDelivery(
       deliveryResult.taskKind === "four-panel-comic" ? comicFrames : undefined,
     generatorNotes: deliveryResult.textResponse.trim(),
   });
+
+  const finalPaymentRelease = buildFinalPaymentRelease(
+    agentId,
+    sample.agentName,
+    entry.currentBids,
+  );
+  const pendingFinalReleases = finalPaymentRelease
+    ? filterUnreleasedPaymentReleases(entry.session, [finalPaymentRelease])
+    : [];
+  if (pendingFinalReleases.length > 0) {
+    try {
+      const onChainFinalReleases = await releaseEscrowPaymentsOnHedera(
+        sessionId,
+        pendingFinalReleases,
+      );
+      const releasedFinalPayments = appendPaymentReleases(
+        entry.session,
+        onChainFinalReleases,
+      );
+      const releasedFinal = releasedFinalPayments[0];
+      entry.session.messages.push(
+        makeMsg(
+          `Released final escrow payment on Hedera: ${releasedFinal.agentName} $${releasedFinal.amountUsd.toFixed(2)} / ${releasedFinal.amountHbar?.toFixed(4) ?? "?"} HBAR (${releasedFinal.txId}).`,
+          "toolCall",
+        ),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "unknown final payment release error";
+      entry.session.messages.push(makeMsg(`Final escrow release failed: ${message}`));
+      entry.session.updatedAt = Date.now();
+      return { error: `Final escrow release failed: ${message}` };
+    }
+  }
 
   setDeliveredState(entry, {
     agentId,

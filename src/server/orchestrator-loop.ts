@@ -2,6 +2,12 @@ import { getGeminiClient } from "@/server/agents/gemini-client";
 import { allFunctionDeclarations, executeTool } from "@/server/tools";
 import { getStoredSamples } from "@/server/tools/business";
 import { buildAgentShortlist } from "@/lib/shortlist";
+import { releaseEscrowPaymentsOnHedera } from "@/server/hedera/payout";
+import {
+  appendPaymentReleases,
+  buildTrialPaymentReleases,
+  filterUnreleasedPaymentReleases,
+} from "@/server/payment-ledger";
 import { makeMsg, sessions } from "@/server/orchestrator-session";
 import {
   applyDemoFallback,
@@ -284,6 +290,40 @@ async function processToolCalls(
       if (name === "score_samples") {
         const samples = getStoredSamples(sessionId);
         if (samples.length > 0) {
+          const pendingTrialReleases = filterUnreleasedPaymentReleases(
+            entry.session,
+            buildTrialPaymentReleases(samples, entry.currentBids),
+          );
+          if (pendingTrialReleases.length > 0) {
+            try {
+              const onChainTrialReleases = await releaseEscrowPaymentsOnHedera(
+                sessionId,
+                pendingTrialReleases,
+              );
+              const releasedTrialPayments = appendPaymentReleases(
+                entry.session,
+                onChainTrialReleases,
+              );
+              const trialSummary = releasedTrialPayments
+                .map(
+                  (payment) =>
+                    `${payment.agentName} $${payment.amountUsd.toFixed(2)} / ${payment.amountHbar?.toFixed(4) ?? "?"} HBAR (${payment.txId})`,
+                )
+                .join(", ");
+              entry.session.messages.push(
+                makeMsg(`Released trial escrow payments on Hedera: ${trialSummary}.`, "toolCall"),
+              );
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : "unknown trial payment release error";
+              entry.session.messages.push(makeMsg(`Trial escrow release failed: ${message}`));
+              entry.session.state = { stage: "error", message };
+              entry.session.updatedAt = Date.now();
+              shouldPause = true;
+              break;
+            }
+          }
+
           entry.session.messages.push(makeMsg("", "scoreCanvas", { samples }));
           entry.session.state = {
             stage: "evaluating",
